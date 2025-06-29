@@ -12,7 +12,9 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="ccwatch - ClaudeCode Monitor", layout="wide")
 
-CLAUDE_PROJECTS_PATH = Path.home() / ".claude" / "projects"
+# Allow overriding the path via environment variable
+DEFAULT_CLAUDE_PATH = Path.home() / ".claude" / "projects"
+CLAUDE_PROJECTS_PATH = Path(os.getenv("CLAUDE_PROJECTS_PATH", str(DEFAULT_CLAUDE_PATH)))
 JSONL_PATTERN = "**/*.jsonl"
 ERROR_LOG_FILE = "error.log"
 MAX_PROJECTS_TO_SHOW = 10
@@ -404,33 +406,13 @@ def main():
                     st.caption(f"- {file_name}")
                     st.caption(f"  Updated: {mtime.strftime('%H:%M:%S')}")
 
-            st.divider()
-            st.subheader("📂 Project Filter")
-
-            # Get project list
-            project_names = list(set(Path(f).parent.name for f in jsonl_files))
-            project_names.sort()
-
-            selected_projects = st.multiselect(
-                "Select Projects",
-                options=project_names,
-                default=None,
-                help="Select to display specific projects only",
-            )
-
     # Main content
     if not jsonl_files:
         st.info("Searching for ClaudeCode log files...")
         return
 
-    # Filter files for selected projects only
-    if selected_projects:
-        filtered_files = [f for f in jsonl_files if Path(f).parent.name in selected_projects]
-    else:
-        filtered_files = jsonl_files
-
     cache_key = st.session_state["update_count"]
-    df = load_logs_with_duckdb(filtered_files, cache_key)
+    df = load_logs_with_duckdb(jsonl_files, cache_key)
 
     if df is not None and not df.empty:
         # Display metrics
