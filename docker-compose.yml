@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  ccwatch:
+    build: .
+    ports:
+      - "${CCWATCH_PORT:-8401}:8501"
+    volumes:
+      # Mount Claude projects directory as read-only
+      - ${HOME}/.claude/projects:/data:ro
+    environment:
+      - CLAUDE_PROJECTS_PATH=/data
+    restart: unless-stopped

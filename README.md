@@ -44,6 +44,30 @@ uv run streamlit run src/app.py
 
 The application will be accessible at http://localhost:8501 by default.
 
+### Using Docker
+
+You can also run ccwatch using Docker:
+
+```bash
+# Build and run with docker-compose (default port 8401)
+docker-compose up -d
+
+# Or specify a custom port
+CCWATCH_PORT=8503 docker-compose up -d
+
+# Or build manually
+docker build -t ccwatch .
+
+# Run manually (mounting your Claude projects directory)
+docker run -d \
+  -p 8401:8501 \
+  -v ~/.claude/projects:/data:ro \
+  -e CLAUDE_PROJECTS_PATH=/data \
+  ccwatch
+```
+
+The Docker container mounts your Claude projects directory as read-only for security.
+
 ## Usage
 
 1. Launch the application to automatically load log files from `~/.claude/projects/`
