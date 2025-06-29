@@ -16,11 +16,11 @@ CLAUDE_PROJECTS_PATH = Path.home() / ".claude" / "projects"
 JSONL_PATTERN = "**/*.jsonl"
 ERROR_LOG_FILE = "error.log"
 MAX_PROJECTS_TO_SHOW = 10
-CHECK_INTERVAL = 5 * 60  # 5分(秒)
+CHECK_INTERVAL = 5 * 60  # 5 minutes (in seconds)
 
 
 def get_jsonl_files():
-    """ClaudeCodeのプロジェクトログファイルを検索"""
+    """Search for ClaudeCode project log files"""
     if not CLAUDE_PROJECTS_PATH.exists():
         st.warning(f"ClaudeCode projects directory not found: {CLAUDE_PROJECTS_PATH}")
         return []
@@ -32,13 +32,13 @@ def get_jsonl_files():
 
 @st.cache_data(ttl=3600)
 def load_logs_with_duckdb(file_paths, cache_key):
-    """DuckDBを使用してJSONLファイルを直接読み込む
+    """Load JSONL files directly using DuckDB
 
     Args:
-        file_paths: 読み込むJSONLファイルのパスリスト
-        cache_key: キャッシュ制御用のキー(更新カウンタ)
+        file_paths: List of JSONL file paths to load
+        cache_key: Cache control key (update counter)
     """
-    _ = cache_key  # キャッシュ制御のために使用
+    _ = cache_key  # Used for cache control
     if not file_paths:
         return None
 
@@ -98,21 +98,21 @@ def load_logs_with_duckdb(file_paths, cache_key):
 
 
 def show_metrics(df):
-    """基本的なメトリクスを表示"""
+    """Display basic metrics"""
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("総ログ数", len(df))
+        st.metric("Total Logs", len(df))
     with col2:
-        st.metric("セッション数", df["session_id"].nunique())
+        st.metric("Sessions", df["session_id"].nunique())
     with col3:
-        st.metric("プロジェクト数", df["project_path"].nunique())
+        st.metric("Projects", df["project_path"].nunique())
     with col4:
-        st.metric("モデル数", df["model"].nunique())
+        st.metric("Models", df["model"].nunique())
 
 
 def show_overall_graphs(df):
-    """全体グラフを表示"""
-    st.header("📈 全体統計")
+    """Display overall statistics graphs"""
+    st.header("📈 Overall Statistics")
 
     col1, col2 = st.columns(2)
 
@@ -122,7 +122,7 @@ def show_overall_graphs(df):
             timeline_data,
             x="timestamp",
             y="count",
-            title="時間別メッセージ数",
+            title="Messages by Hour",
             height=400,
         )
         st.plotly_chart(fig_timeline, use_container_width=True)
@@ -132,15 +132,15 @@ def show_overall_graphs(df):
         fig_model_pie = px.pie(
             values=model_counts.values,
             names=model_counts.index,
-            title="モデル別メッセージ数",
+            title="Messages by Model",
             height=400,
         )
         st.plotly_chart(fig_model_pie, use_container_width=True)
 
 
 def show_session_analysis(df):
-    """セッション分析を表示"""
-    st.header("🎯 セッション分析")
+    """Display session analysis"""
+    st.header("🎯 Session Analysis")
 
     session_data = df.groupby("session_id").agg(
         {
@@ -158,15 +158,15 @@ def show_session_analysis(df):
 
     with col1:
         duration_bins = [0, 5, 15, 30, 60, float("inf")]
-        duration_labels = ["0-5分", "5-15分", "15-30分", "30-60分", "60分以上"]
+        duration_labels = ["0-5 min", "5-15 min", "15-30 min", "30-60 min", "60+ min"]
         session_data["duration_category"] = pd.cut(session_data["duration"], bins=duration_bins, labels=duration_labels)
 
         duration_counts = session_data["duration_category"].value_counts()
         fig_duration = px.bar(
             x=duration_counts.index,
             y=duration_counts.values,
-            title="セッション時間分布",
-            labels={"x": "セッション時間", "y": "セッション数"},
+            title="Session Duration Distribution",
+            labels={"x": "Session Duration", "y": "Number of Sessions"},
             height=400,
         )
         st.plotly_chart(fig_duration, use_container_width=True)
@@ -182,16 +182,16 @@ def show_session_analysis(df):
         fig_messages = px.bar(
             x=message_counts.index,
             y=message_counts.values,
-            title="セッションメッセージ数分布",
-            labels={"x": "メッセージ数", "y": "セッション数"},
+            title="Session Message Count Distribution",
+            labels={"x": "Message Count", "y": "Number of Sessions"},
             height=400,
         )
         st.plotly_chart(fig_messages, use_container_width=True)
 
 
 def show_model_analysis(df):
-    """モデル別分析を表示"""
-    st.header("🤖 モデル別分析")
+    """Display model-based analysis"""
+    st.header("🤖 Model Analysis")
 
     col1, col2 = st.columns(2)
 
@@ -207,7 +207,7 @@ def show_model_analysis(df):
             y="project_path",
             color="model",
             orientation="h",
-            title="モデル別プロジェクト使用状況(上位10プロジェクト)",
+            title="Model Usage by Project (Top 10 Projects)",
             height=400,
         )
         st.plotly_chart(fig_model_project, use_container_width=True)
@@ -224,15 +224,15 @@ def show_model_analysis(df):
             x="timestamp",
             y="count",
             color="model",
-            title="モデル別日次使用数",
+            title="Daily Model Usage",
             height=400,
         )
         st.plotly_chart(fig_model_daily, use_container_width=True)
 
 
 def show_heatmap(df):
-    """GitHubスタイルのヒートマップを表示"""
-    st.header("📅 使用頻度ヒートマップ")
+    """Display GitHub-style heatmap"""
+    st.header("📅 Usage Frequency Heatmap")
 
     df["date"] = df["timestamp"].dt.date
     daily_counts = df.groupby("date").size().reset_index(name="count")
@@ -267,9 +267,9 @@ def show_heatmap(df):
     )
 
     fig.update_layout(
-        title="過去52週間の使用頻度",
-        xaxis_title="週",
-        yaxis_title="曜日",
+        title="Usage Frequency for Past 52 Weeks",
+        xaxis_title="Week",
+        yaxis_title="Day of Week",
         height=300,
         plot_bgcolor="white",
         xaxis=dict(
@@ -289,19 +289,19 @@ def show_heatmap(df):
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("合計日数", len(daily_counts))
+        st.metric("Total Days", len(daily_counts))
     with col2:
-        st.metric("平均メッセージ数/日", f"{daily_counts['count'].mean():.1f}")
+        st.metric("Avg Messages/Day", f"{daily_counts['count'].mean():.1f}")
     with col3:
-        st.metric("最大メッセージ数/日", daily_counts["count"].max())
+        st.metric("Max Messages/Day", daily_counts["count"].max())
     with col4:
         active_days = (daily_counts["count"] > 0).sum()
-        st.metric("アクティブ日数", f"{active_days} ({active_days / len(daily_counts) * 100:.1f}%)")
+        st.metric("Active Days", f"{active_days} ({active_days / len(daily_counts) * 100:.1f}%)")
 
 
 def show_recent_logs(df):
-    """最新のログを表示"""
-    st.header("📋 最新のメッセージ")
+    """Display recent logs"""
+    st.header("📋 Recent Messages")
 
     recent_logs = df.nlargest(20, "timestamp")[["timestamp", "model", "session_id", "project_path", "message_content"]]
 
@@ -314,8 +314,8 @@ def show_recent_logs(df):
 
 
 def show_project_insights(df):
-    """プロジェクト別インサイトを表示"""
-    st.header("💼 プロジェクト別インサイト")
+    """Display project insights"""
+    st.header("💼 Project Insights")
 
     project_stats = df.groupby("project_path").agg(
         {
@@ -337,8 +337,8 @@ def show_project_insights(df):
             x=top_projects["message_count"],
             y=top_projects.index,
             orientation="h",
-            title="上位10プロジェクト(メッセージ数)",
-            labels={"x": "メッセージ数", "y": "プロジェクト"},
+            title="Top 10 Projects (by Message Count)",
+            labels={"x": "Message Count", "y": "Project"},
             height=400,
         )
         st.plotly_chart(fig_top_projects, use_container_width=True)
@@ -354,8 +354,8 @@ def show_project_insights(df):
             x="days_since_last_use",
             y=recent_projects.index,
             size="message_count",
-            title="最近使用したプロジェクト",
-            labels={"x": "最終使用からの日数", "y": "プロジェクト"},
+            title="Recently Used Projects",
+            labels={"x": "Days Since Last Use", "y": "Project"},
             height=400,
         )
         st.plotly_chart(fig_recent, use_container_width=True)
@@ -363,67 +363,67 @@ def show_project_insights(df):
 
 def main():
     st.title("🔍 ccwatch - ClaudeCode Monitor")
-    st.markdown("ClaudeCodeのログを監視・可視化")
+    st.markdown("Monitor and visualize ClaudeCode logs")
 
-    # 5分ごとに自動更新(ミリ秒単位)
+    # Auto-refresh every 5 minutes (in milliseconds)
     count = st_autorefresh(interval=CHECK_INTERVAL * 1000, limit=None, key="autorefresh")
 
-    # セッション状態の初期化
+    # Initialize session state
     if "update_count" not in st.session_state:
         st.session_state["update_count"] = 0
 
     if count > 0:
         st.session_state["update_count"] = count
 
-    # ファイルリストを取得
+    # Get file list
     jsonl_files = get_jsonl_files()
 
-    # サイドバー
+    # Sidebar
     with st.sidebar:
         st.header("🔍 ccwatch")
         st.caption("ClaudeCode Monitor")
 
-        st.write("📊 監視状態")
-        st.write("- 自動更新: 5分ごと")
-        st.write(f"- 更新回数: {st.session_state['update_count']}")
+        st.write("📊 Monitoring Status")
+        st.write("- Auto-refresh: Every 5 minutes")
+        st.write(f"- Update Count: {st.session_state['update_count']}")
 
         st.divider()
-        if st.button("🔄 手動更新", use_container_width=True):
+        if st.button("🔄 Manual Refresh", use_container_width=True):
             st.rerun()
 
-        # ファイル情報
+        # File information
         if jsonl_files:
             st.divider()
-            st.write(f"📁 検出ファイル数: {len(jsonl_files)}")
+            st.write(f"📁 Files Detected: {len(jsonl_files)}")
 
-            # 最新5ファイル
-            with st.expander("最新のファイル"):
+            # Latest 5 files
+            with st.expander("Latest Files"):
                 for f in jsonl_files[:5]:
                     file_name = Path(f).name
                     mtime = datetime.fromtimestamp(os.path.getmtime(f))
                     st.caption(f"- {file_name}")
-                    st.caption(f"  更新: {mtime.strftime('%H:%M:%S')}")
+                    st.caption(f"  Updated: {mtime.strftime('%H:%M:%S')}")
 
             st.divider()
-            st.subheader("📂 プロジェクトフィルタ")
+            st.subheader("📂 Project Filter")
 
-            # プロジェクトリストを取得
+            # Get project list
             project_names = list(set(Path(f).parent.name for f in jsonl_files))
             project_names.sort()
 
             selected_projects = st.multiselect(
-                "プロジェクトを選択",
+                "Select Projects",
                 options=project_names,
                 default=None,
-                help="特定のプロジェクトのみ表示する場合に選択",
+                help="Select to display specific projects only",
             )
 
-    # メインコンテンツ
+    # Main content
     if not jsonl_files:
-        st.info("ClaudeCodeのログファイルを検索中...")
+        st.info("Searching for ClaudeCode log files...")
         return
 
-    # 選択されたプロジェクトのファイルのみをフィルタ
+    # Filter files for selected projects only
     if selected_projects:
         filtered_files = [f for f in jsonl_files if Path(f).parent.name in selected_projects]
     else:
@@ -433,31 +433,31 @@ def main():
     df = load_logs_with_duckdb(filtered_files, cache_key)
 
     if df is not None and not df.empty:
-        # メトリクスを表示
+        # Display metrics
         show_metrics(df)
 
-        # 全体統計
+        # Overall statistics
         show_overall_graphs(df)
 
-        # セッション分析
+        # Session analysis
         show_session_analysis(df)
 
-        # モデル分析
+        # Model analysis
         show_model_analysis(df)
 
-        # ヒートマップ
+        # Heatmap
         show_heatmap(df)
 
-        # プロジェクト別インサイト
+        # Project insights
         show_project_insights(df)
 
-        # 最新ログ
+        # Recent logs
         show_recent_logs(df)
 
-        # フッター情報
-        st.caption(f"最終更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        # Footer information
+        st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     else:
-        st.error("データの読み込みに失敗しました")
+        st.error("Failed to load data")
 
 
 if __name__ == "__main__":

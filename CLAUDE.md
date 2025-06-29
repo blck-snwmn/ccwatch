@@ -1,65 +1,65 @@
-- YOU MUST: タスク完了またはユーザーにメッセージを返すときに最後に一度だけ `afplay /System/Library/Sounds/Funk.aiff -v 30 ` コマンドを実行して通知する
+- YOU MUST: Run `afplay /System/Library/Sounds/Funk.aiff -v 30` command once when completing a task or returning a message to the user for notification
 
-# ClaudeCode ログ可視化ツール「ccwatch」
+# ClaudeCode Log Visualization Tool "ccwatch"
 
-## プロジェクト概要
-ClaudeCodeのログファイル（~/.claude/projects/**/*.jsonl）を監視・可視化するWebアプリケーション。
-DuckDBのJSONL直接読み込み機能を活用し、ゼロコピーで高速なクエリ処理を実現。
+## Project Overview
+A web application that monitors and visualizes ClaudeCode log files (~/.claude/projects/**/*.jsonl).
+Utilizes DuckDB's direct JSONL reading capability for zero-copy, high-performance query processing.
 
-## 開発サイクル
+## Development Cycle
 
-### Streamlitアプリの起動
+### Starting the Streamlit App
 ```bash
-# 依存関係のインストール
+# Install dependencies
 uv sync
 
-# アプリケーションの起動
+# Start the application
 uv run streamlit run src/app.py
 
-# バックグラウンドで起動
+# Start in background
 uv run streamlit run src/app.py > streamlit.log 2>&1 &
 
-# プロセスの停止
+# Stop process
 pkill -f "streamlit run src/app.py"
 ```
 
-### DuckDBでのデータ構造確認
+### Checking Data Structure with DuckDB
 ```bash
-# ファイルのスキーマを確認
+# Check file schema
 duckdb -c "DESCRIBE SELECT * FROM read_json_auto('/path/to/file.jsonl', format='newline_delimited') LIMIT 1;"
 
-# 実際のデータを確認
+# Check actual data
 duckdb -c "SELECT * FROM read_json_auto('/path/to/file.jsonl', format='newline_delimited') LIMIT 5;"
 ```
 
-### エラー確認
-- エラーは `error.log` に自動記録される
-- `cat error.log` でエラーを確認
+### Error Checking
+- Errors are automatically logged to `error.log`
+- Check errors with `cat error.log`
 
-## コード品質管理（Ruff）
+## Code Quality Management (Ruff)
 
-### 必須実行コマンド
+### Required Commands
 ```bash
-# Lintチェックと自動修正
+# Lint check and auto-fix
 uv run ruff check . --fix
 
-# コードフォーマット
+# Code formatting
 uv run ruff format .
 
-# 最終確認（エラーがないことを確認）
+# Final check (ensure no errors)
 uv run ruff check .
 uv run ruff format --check .
 ```
 
-## uv の基本的な使い方
+## Basic uv Usage
 
 ```bash
-# パッケージの追加
+# Add package
 uv add <package-name>
 
-# 開発用パッケージの追加
+# Add development package
 uv add --dev <package-name>
 
-# コマンドの実行
+# Run command
 uv run <command>
 ```
