@@ -1,5 +1,3 @@
-- YOU MUST: Run `afplay /System/Library/Sounds/Funk.aiff -v 30` command once when completing a task or returning a message to the user for notification
-
 # ClaudeCode Log Visualization Tool "ccwatch"
 
 ## Project Overview
