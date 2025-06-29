@@ -198,11 +198,28 @@ def show_model_analysis(df):
     col1, col2 = st.columns(2)
 
     with col1:
-        model_project_data = df[df["model"].notna()].groupby(["project_path", "model"]).size().reset_index(name="count")
+        # Get top 10 projects by model message count (excluding user messages)
+        df_model_only = df[df["model"].notna()]
+        project_totals = df_model_only["project_path"].value_counts().head(10)
 
-        top_projects = df["project_path"].value_counts().head(10).index
-        model_project_filtered = model_project_data[model_project_data["project_path"].isin(top_projects)]
+        # Get model breakdown for these projects
+        model_project_data = df_model_only.groupby(["project_path", "model"]).size().reset_index(name="count")
+        model_project_filtered = model_project_data[model_project_data["project_path"].isin(project_totals.index)]
 
+        # Convert project_totals to DataFrame for easier manipulation
+        project_order_df = project_totals.reset_index()
+        project_order_df.columns = ["project_path", "total_count"]
+        project_order_df["order"] = range(len(project_order_df))
+
+        # Add order to filtered data
+        model_project_filtered = model_project_filtered.merge(
+            project_order_df[["project_path", "order"]], on="project_path"
+        )
+
+        # Sort by order to ensure correct display
+        model_project_filtered = model_project_filtered.sort_values("order")
+
+        # Create the figure with model breakdown
         fig_model_project = px.bar(
             model_project_filtered,
             x="count",
@@ -211,7 +228,9 @@ def show_model_analysis(df):
             orientation="h",
             title="Model Usage by Project (Top 10 Projects)",
             height=400,
+            category_orders={"project_path": project_totals.index.tolist()[::-1]},  # Reverse for correct display
         )
+        fig_model_project.update_yaxes(autorange="reversed")
         st.plotly_chart(fig_model_project, use_container_width=True)
 
     with col2:
@@ -343,6 +362,7 @@ def show_project_insights(df):
             labels={"x": "Message Count", "y": "Project"},
             height=400,
         )
+        fig_top_projects.update_yaxes(autorange="reversed")
         st.plotly_chart(fig_top_projects, use_container_width=True)
 
     with col2:
@@ -360,6 +380,7 @@ def show_project_insights(df):
             labels={"x": "Days Since Last Use", "y": "Project"},
             height=400,
         )
+        fig_recent.update_yaxes(autorange="reversed")
         st.plotly_chart(fig_recent, use_container_width=True)
 
 
