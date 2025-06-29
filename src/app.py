@@ -49,7 +49,7 @@ def load_logs_with_duckdb(file_paths, cache_key):
 
     for file_path in file_paths:
         try:
-            check_query = f"SELECT * FROM read_json_auto('{file_path}', format='newline_delimited') LIMIT 1"
+            check_query = f"SELECT * FROM read_json_auto('{file_path}', format='newline_delimited') WHERE type = 'assistant' LIMIT 1"
             first_row = conn.execute(check_query).fetchdf()
 
             if first_row.empty or "timestamp" not in first_row.columns:
@@ -65,17 +65,14 @@ def load_logs_with_duckdb(file_paths, cache_key):
             type as log_type,
             TRY_CAST(message.role AS VARCHAR) as role,
             TRY_CAST(message.content AS VARCHAR) as message_content,
-            CASE 
-                WHEN type = 'assistant' AND message IS NOT NULL 
-                THEN TRY_CAST(json_extract_string(to_json(message), '$.model') AS VARCHAR)
-                ELSE NULL
-            END as model,
+            TRY_CAST(json_extract_string(to_json(message), '$.model') AS VARCHAR) as model,
             sessionId as session_id,
             uuid,
             parentUuid as parent_uuid,
             cwd,
             userType as user_type
         FROM read_json_auto('{file_path}', format='newline_delimited')
+        WHERE type = 'assistant'
         """
         queries.append(query)
 
@@ -103,7 +100,7 @@ def show_metrics(df):
     """Display basic metrics"""
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Total Logs", len(df))
+        st.metric("AI Responses", len(df))
     with col2:
         st.metric("Sessions", df["session_id"].nunique())
     with col3:
@@ -124,17 +121,17 @@ def show_overall_graphs(df):
             timeline_data,
             x="timestamp",
             y="count",
-            title="Messages by Hour",
+            title="AI Responses by Hour",
             height=400,
         )
         st.plotly_chart(fig_timeline, use_container_width=True)
 
     with col2:
-        model_counts = df[df["model"].notna()]["model"].value_counts()
+        model_counts = df["model"].value_counts()
         fig_model_pie = px.pie(
             values=model_counts.values,
             names=model_counts.index,
-            title="Messages by Model",
+            title="AI Responses by Model",
             height=400,
         )
         st.plotly_chart(fig_model_pie, use_container_width=True)
@@ -147,12 +144,12 @@ def show_session_analysis(df):
     session_data = df.groupby("session_id").agg(
         {
             "timestamp": ["min", "max", "count"],
-            "model": lambda x: x.mode()[0] if not x.empty and not x.isna().all() else None,
+            "model": lambda x: x.mode()[0] if not x.empty else None,
             "project_path": "first",
         }
     )
 
-    session_data.columns = ["start_time", "end_time", "message_count", "primary_model", "project"]
+    session_data.columns = ["start_time", "end_time", "ai_response_count", "primary_model", "project"]
     session_data["duration"] = (session_data["end_time"] - session_data["start_time"]).dt.total_seconds() / 60
     session_data = session_data.sort_values("start_time", ascending=False)
 
@@ -177,15 +174,15 @@ def show_session_analysis(df):
         message_bins = [0, 10, 50, 100, 200, float("inf")]
         message_labels = ["1-10", "11-50", "51-100", "101-200", "200+"]
         session_data["message_category"] = pd.cut(
-            session_data["message_count"], bins=message_bins, labels=message_labels
+            session_data["ai_response_count"], bins=message_bins, labels=message_labels
         )
 
         message_counts = session_data["message_category"].value_counts()
         fig_messages = px.bar(
             x=message_counts.index,
             y=message_counts.values,
-            title="Session Message Count Distribution",
-            labels={"x": "Message Count", "y": "Number of Sessions"},
+            title="Session AI Response Count Distribution",
+            labels={"x": "AI Response Count", "y": "Number of Sessions"},
             height=400,
         )
         st.plotly_chart(fig_messages, use_container_width=True)
@@ -198,12 +195,11 @@ def show_model_analysis(df):
     col1, col2 = st.columns(2)
 
     with col1:
-        # Get top 10 projects by model message count (excluding user messages)
-        df_model_only = df[df["model"].notna()]
-        project_totals = df_model_only["project_path"].value_counts().head(10)
+        # Get top 10 projects by AI response count
+        project_totals = df["project_path"].value_counts().head(10)
 
         # Get model breakdown for these projects
-        model_project_data = df_model_only.groupby(["project_path", "model"]).size().reset_index(name="count")
+        model_project_data = df.groupby(["project_path", "model"]).size().reset_index(name="count")
         model_project_filtered = model_project_data[model_project_data["project_path"].isin(project_totals.index)]
 
         # Convert project_totals to DataFrame for easier manipulation
@@ -234,12 +230,7 @@ def show_model_analysis(df):
         st.plotly_chart(fig_model_project, use_container_width=True)
 
     with col2:
-        model_daily = (
-            df[df["model"].notna()]
-            .groupby([pd.Grouper(key="timestamp", freq="D"), "model"])
-            .size()
-            .reset_index(name="count")
-        )
+        model_daily = df.groupby([pd.Grouper(key="timestamp", freq="D"), "model"]).size().reset_index(name="count")
         fig_model_daily = px.bar(
             model_daily,
             x="timestamp",
@@ -281,7 +272,7 @@ def show_heatmap(df):
             y=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             colorscale=colorscale,
             showscale=True,
-            hovertemplate="Week %{x}<br>%{y}<br>Messages: %{z}<extra></extra>",
+            hovertemplate="Week %{x}<br>%{y}<br>AI Responses: %{z}<extra></extra>",
             xgap=2,
             ygap=2,
         )
@@ -312,9 +303,9 @@ def show_heatmap(df):
     with col1:
         st.metric("Total Days", len(daily_counts))
     with col2:
-        st.metric("Avg Messages/Day", f"{daily_counts['count'].mean():.1f}")
+        st.metric("Avg AI Responses/Day", f"{daily_counts['count'].mean():.1f}")
     with col3:
-        st.metric("Max Messages/Day", daily_counts["count"].max())
+        st.metric("Max AI Responses/Day", daily_counts["count"].max())
     with col4:
         active_days = (daily_counts["count"] > 0).sum()
         st.metric("Active Days", f"{active_days} ({active_days / len(daily_counts) * 100:.1f}%)")
@@ -322,7 +313,7 @@ def show_heatmap(df):
 
 def show_recent_logs(df):
     """Display recent logs"""
-    st.header("📋 Recent Messages")
+    st.header("📋 Recent AI Responses")
 
     recent_logs = df.nlargest(20, "timestamp")[["timestamp", "model", "session_id", "project_path", "message_content"]]
 
@@ -346,20 +337,20 @@ def show_project_insights(df):
         }
     )
 
-    project_stats.columns = ["first_use", "last_use", "message_count", "session_count", "model_usage"]
+    project_stats.columns = ["first_use", "last_use", "ai_response_count", "session_count", "model_usage"]
     project_stats["days_active"] = (project_stats["last_use"] - project_stats["first_use"]).dt.days + 1
-    project_stats = project_stats.sort_values("message_count", ascending=False)
+    project_stats = project_stats.sort_values("ai_response_count", ascending=False)
 
     col1, col2 = st.columns(2)
 
     with col1:
         top_projects = project_stats.head(10)
         fig_top_projects = px.bar(
-            x=top_projects["message_count"],
+            x=top_projects["ai_response_count"],
             y=top_projects.index,
             orientation="h",
-            title="Top 10 Projects (by Message Count)",
-            labels={"x": "Message Count", "y": "Project"},
+            title="Top 10 Projects (by AI Response Count)",
+            labels={"x": "AI Response Count", "y": "Project"},
             height=400,
         )
         fig_top_projects.update_yaxes(autorange="reversed")
@@ -375,7 +366,7 @@ def show_project_insights(df):
             recent_projects,
             x="days_since_last_use",
             y=recent_projects.index,
-            size="message_count",
+            size="ai_response_count",
             title="Recently Used Projects",
             labels={"x": "Days Since Last Use", "y": "Project"},
             height=400,
