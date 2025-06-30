@@ -64,10 +64,10 @@ def load_logs_with_duckdb(cache_key):
     _ = cache_key  # Used for cache control
 
     conn = duckdb.connect(":memory:")
-    
+
     # Use glob pattern to read all JSONL files at once
     glob_pattern = str(CLAUDE_PROJECTS_PATH / JSONL_PATTERN)
-    
+
     query = f"""
     SELECT 
         filename as source_file,
