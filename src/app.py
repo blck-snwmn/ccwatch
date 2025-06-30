@@ -70,7 +70,11 @@ def load_logs_with_duckdb(file_paths, cache_key):
             uuid,
             parentUuid as parent_uuid,
             cwd,
-            userType as user_type
+            userType as user_type,
+            TRY_CAST(message.usage.input_tokens AS BIGINT) as input_tokens,
+            TRY_CAST(message.usage.cache_creation_input_tokens AS BIGINT) as cache_creation_input_tokens,
+            TRY_CAST(message.usage.cache_read_input_tokens AS BIGINT) as cache_read_input_tokens,
+            TRY_CAST(message.usage.output_tokens AS BIGINT) as output_tokens
         FROM read_json_auto('{file_path}', format='newline_delimited')
         WHERE type = 'assistant'
         """
@@ -86,6 +90,19 @@ def load_logs_with_duckdb(file_paths, cache_key):
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
         df["project_path"] = df["source_file"].apply(lambda x: Path(x).parent.name)
         df["session_id"] = df["session_id"].astype(str)
+
+        # Fill NaN values for token columns with 0
+        token_columns = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]
+        for col in token_columns:
+            if col in df.columns:
+                df[col] = df[col].fillna(0).astype(int)
+
+        # Calculate total effective input tokens (cache_read tokens count as 10% of regular tokens)
+        df["effective_input_tokens"] = (
+            df["input_tokens"] + df["cache_creation_input_tokens"] + (df["cache_read_input_tokens"] * 0.1)
+        )
+        df["total_tokens"] = df["effective_input_tokens"] + df["output_tokens"]
+
         return df
     except Exception as e:
         st.error(f"Error loading JSONL files: {e}")
@@ -98,6 +115,7 @@ def load_logs_with_duckdb(file_paths, cache_key):
 
 def show_metrics(df):
     """Display basic metrics"""
+    # First row: basic metrics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("AI Responses", len(df))
@@ -107,6 +125,43 @@ def show_metrics(df):
         st.metric("Projects", df["project_path"].nunique())
     with col4:
         st.metric("Models", df["model"].nunique())
+
+    # Second row: token metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        total_input = df["effective_input_tokens"].sum()
+        st.metric("Total Input Tokens", f"{total_input:,.0f}")
+    with col2:
+        total_output = df["output_tokens"].sum()
+        st.metric("Total Output Tokens", f"{total_output:,.0f}")
+    with col3:
+        avg_tokens = df["total_tokens"].mean()
+        st.metric("Avg Tokens/Response", f"{avg_tokens:,.0f}")
+    with col4:
+        # Calculate 24-hour activity
+        last_24h = datetime.now(tz=df["timestamp"].dt.tz) - pd.Timedelta(hours=24)
+        recent_count = len(df[df["timestamp"] > last_24h])
+        st.metric("24h Activity", recent_count)
+
+    # Third row: cache metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        cache_read = df["cache_read_input_tokens"].sum()
+        st.metric("Cache Read Tokens", f"{cache_read:,.0f}")
+    with col2:
+        cache_creation = df["cache_creation_input_tokens"].sum()
+        st.metric("Cache Creation Tokens", f"{cache_creation:,.0f}")
+    with col3:
+        regular_input = df["input_tokens"].sum()
+        st.metric("Regular Input Tokens", f"{regular_input:,.0f}")
+    with col4:
+        # Cache savings (cache reads cost 10% of regular input)
+        cache_savings = (
+            cache_read * 0.9 / (regular_input + cache_creation + cache_read) * 100
+            if (regular_input + cache_creation + cache_read) > 0
+            else 0
+        )
+        st.metric("Cache Savings", f"{cache_savings:.1f}%")
 
 
 def show_overall_graphs(df):
