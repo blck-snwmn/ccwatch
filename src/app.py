@@ -55,60 +55,42 @@ def get_jsonl_files():
 
 
 @st.cache_data(ttl=3600)
-def load_logs_with_duckdb(file_paths, cache_key):
+def load_logs_with_duckdb(cache_key):
     """Load JSONL files directly using DuckDB
 
     Args:
-        file_paths: List of JSONL file paths to load
         cache_key: Cache control key (update counter)
     """
     _ = cache_key  # Used for cache control
-    if not file_paths:
-        return None
 
     conn = duckdb.connect(":memory:")
-    queries = []
-
-    for file_path in file_paths:
-        try:
-            check_query = f"SELECT * FROM read_json_auto('{file_path}', format='newline_delimited') WHERE type = 'assistant' LIMIT 1"
-            first_row = conn.execute(check_query).fetchdf()
-
-            if first_row.empty or "timestamp" not in first_row.columns:
-                continue
-
-        except Exception:
-            continue
-
-        query = f"""
-        SELECT 
-            '{file_path}' as source_file,
-            timestamp,
-            type as log_type,
-            TRY_CAST(message.role AS VARCHAR) as role,
-            TRY_CAST(message.content AS VARCHAR) as message_content,
-            TRY_CAST(json_extract_string(to_json(message), '$.model') AS VARCHAR) as model,
-            sessionId as session_id,
-            uuid,
-            parentUuid as parent_uuid,
-            cwd,
-            userType as user_type,
-            TRY_CAST(message.usage.input_tokens AS BIGINT) as input_tokens,
-            TRY_CAST(message.usage.cache_creation_input_tokens AS BIGINT) as cache_creation_input_tokens,
-            TRY_CAST(message.usage.cache_read_input_tokens AS BIGINT) as cache_read_input_tokens,
-            TRY_CAST(message.usage.output_tokens AS BIGINT) as output_tokens
-        FROM read_json_auto('{file_path}', format='newline_delimited')
-        WHERE type = 'assistant'
-        """
-        queries.append(query)
-
-    if not queries:
-        return None
-
-    combined_query = " UNION ALL ".join(queries)
+    
+    # Use glob pattern to read all JSONL files at once
+    glob_pattern = str(CLAUDE_PROJECTS_PATH / JSONL_PATTERN)
+    
+    query = f"""
+    SELECT 
+        filename as source_file,
+        timestamp,
+        type as log_type,
+        TRY_CAST(message.role AS VARCHAR) as role,
+        TRY_CAST(message.content AS VARCHAR) as message_content,
+        TRY_CAST(json_extract_string(to_json(message), '$.model') AS VARCHAR) as model,
+        sessionId as session_id,
+        uuid,
+        parentUuid as parent_uuid,
+        cwd,
+        userType as user_type,
+        TRY_CAST(message.usage.input_tokens AS BIGINT) as input_tokens,
+        TRY_CAST(message.usage.cache_creation_input_tokens AS BIGINT) as cache_creation_input_tokens,
+        TRY_CAST(message.usage.cache_read_input_tokens AS BIGINT) as cache_read_input_tokens,
+        TRY_CAST(message.usage.output_tokens AS BIGINT) as output_tokens
+    FROM read_json_auto('{glob_pattern}', format='newline_delimited', filename=true)
+    WHERE type = 'assistant'
+    """
 
     try:
-        df = conn.execute(combined_query).df()
+        df = conn.execute(query).df()
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
         df["project_path"] = df["source_file"].apply(lambda x: Path(x).parent.name)
         df["session_id"] = df["session_id"].astype(str)
@@ -766,7 +748,7 @@ def main():
         return
 
     cache_key = st.session_state["update_count"]
-    df = load_logs_with_duckdb(jsonl_files, cache_key)
+    df = load_logs_with_duckdb(cache_key)
 
     if df is not None and not df.empty:
         # Display metrics
