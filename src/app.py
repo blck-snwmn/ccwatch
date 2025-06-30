@@ -213,6 +213,35 @@ def show_overall_graphs(df):
         )
         st.plotly_chart(fig_model_pie, use_container_width=True)
 
+    # 24-hour activity timeline
+    st.subheader("📊 24-Hour Activity Timeline")
+    last_24h = datetime.now(tz=df["timestamp"].dt.tz) - pd.Timedelta(hours=24)
+    recent_df = df[df["timestamp"] > last_24h]
+
+    if len(recent_df) > 0:
+        # 5-minute intervals for more granular view
+        minute_activity = recent_df.groupby(pd.Grouper(key="timestamp", freq="5min")).size().reset_index(name="count")
+        fig_24h = px.line(
+            minute_activity,
+            x="timestamp",
+            y="count",
+            title="24-Hour Activity (AI Responses per 5 minutes)",
+            height=300,
+            markers=True,
+        )
+        fig_24h.update_layout(
+            xaxis_title="Time",
+            yaxis_title="AI Responses",
+            showlegend=False,
+            xaxis=dict(
+                tickformat="%H:%M",
+                dtick=3600000,  # Show tick every hour (in milliseconds)
+            ),
+        )
+        st.plotly_chart(fig_24h, use_container_width=True)
+    else:
+        st.info("No activity in the last 24 hours")
+
 
 def show_session_analysis(df):
     """Display session analysis"""
