@@ -20,6 +20,28 @@ ERROR_LOG_FILE = "error.log"
 MAX_PROJECTS_TO_SHOW = 10
 CHECK_INTERVAL = 5 * 60  # 5 minutes (in seconds)
 
+# Model pricing information (per 1M tokens)
+# Source: https://docs.anthropic.com/en/docs/about-claude/models (2025-01)
+MODEL_PRICING = {
+    # Claude Sonnet 3.5 / 3.7
+    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
+    "claude-3-5-sonnet-20240620": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
+    # Claude Opus 3
+    "claude-3-opus-20240229": {"input": 15.00, "output": 75.00, "cache_read": 1.50},
+    # Claude Sonnet 3
+    "claude-3-sonnet-20240229": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
+    # Claude Haiku 3.5
+    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00, "cache_read": 0.08},
+    # Claude Haiku 3
+    "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25, "cache_read": 0.03},
+    # Claude Opus 4
+    "claude-opus-4-20250514": {"input": 15.00, "output": 75.00, "cache_read": 1.50},
+    # Claude Sonnet 4 (if model ID exists)
+    "claude-sonnet-4": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
+    # Default pricing for unknown models
+    "default": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
+}
+
 
 def get_jsonl_files():
     """Search for ClaudeCode project log files"""
@@ -297,6 +319,170 @@ def show_model_analysis(df):
         st.plotly_chart(fig_model_daily, use_container_width=True)
 
 
+def calculate_cost(row):
+    """Calculate cost for a single row based on model and token usage"""
+    model = row["model"]
+    pricing = MODEL_PRICING.get(model, MODEL_PRICING["default"])
+
+    # Calculate costs (pricing is per 1M tokens)
+    input_cost = (row["input_tokens"] + row["cache_creation_input_tokens"]) * pricing["input"] / 1_000_000
+    cache_cost = row["cache_read_input_tokens"] * pricing["cache_read"] / 1_000_000
+    output_cost = row["output_tokens"] * pricing["output"] / 1_000_000
+
+    return input_cost + cache_cost + output_cost
+
+
+def show_cost_calculation_details(df):
+    """Show cost calculation details in an expander"""
+    with st.expander("Cost Calculation Details"):
+        st.caption("Cost formula per response:")
+        st.code("""
+Input cost = (input_tokens + cache_creation_tokens) * model_input_price / 1,000,000
+Cache cost = cache_read_tokens * model_cache_price / 1,000,000  
+Output cost = output_tokens * model_output_price / 1,000,000
+Total cost = Input cost + Cache cost + Output cost
+        """)
+
+        # Show token totals
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Regular Input", f"{df['input_tokens'].sum():,.0f}")
+            st.metric("Total Cache Creation", f"{df['cache_creation_input_tokens'].sum():,.0f}")
+        with col2:
+            st.metric("Total Cache Read", f"{df['cache_read_input_tokens'].sum():,.0f}")
+            st.metric("Total Output", f"{df['output_tokens'].sum():,.0f}")
+        with col3:
+            st.metric("Total Responses", f"{len(df):,}")
+            st.metric("Unique Models", df["model"].nunique())
+
+
+def show_token_and_cost_analysis(df):
+    """Display token usage and cost analysis"""
+    st.header("💰 Token Usage & Cost Analysis")
+
+    # Calculate costs
+    df["cost"] = df.apply(calculate_cost, axis=1)
+    total_cost = df["cost"].sum()
+
+    # Show data period
+    date_range = f"{df['timestamp'].min().strftime('%Y-%m-%d')} - {df['timestamp'].max().strftime('%Y-%m-%d')}"
+    total_days = (df["timestamp"].max() - df["timestamp"].min()).days + 1
+    st.caption(f"Data Period: {date_range} ({total_days} days)")
+
+    # Show calculation details
+    show_cost_calculation_details(df)
+
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Cost", f"${total_cost:.2f}")
+    with col2:
+        daily_avg_cost = total_cost / max((df["timestamp"].max() - df["timestamp"].min()).days, 1)
+        st.metric("Daily Avg Cost", f"${daily_avg_cost:.2f}")
+    with col3:
+        cache_rate = (
+            (df["cache_read_input_tokens"].sum() / df["effective_input_tokens"].sum() * 100)
+            if df["effective_input_tokens"].sum() > 0
+            else 0
+        )
+        st.metric("Cache Hit Rate", f"{cache_rate:.1f}%")
+    with col4:
+        avg_cost_per_response = total_cost / len(df) if len(df) > 0 else 0
+        st.metric("Avg Cost/Response", f"${avg_cost_per_response:.4f}")
+
+    # Cost breakdown by model
+    col1, col2 = st.columns(2)
+
+    with col1:
+        model_costs = (
+            df.groupby("model").agg({"cost": "sum", "effective_input_tokens": "sum", "output_tokens": "sum"}).round(2)
+        )
+        model_costs = model_costs.sort_values("cost", ascending=False)
+
+        fig_cost_by_model = px.bar(
+            model_costs,
+            y=model_costs.index,
+            x="cost",
+            orientation="h",
+            title="Cost by Model",
+            labels={"cost": "Cost ($)", "index": "Model"},
+            height=400,
+        )
+        fig_cost_by_model.update_yaxes(autorange="reversed")
+        st.plotly_chart(fig_cost_by_model, use_container_width=True)
+
+    with col2:
+        # Daily cost trend
+        daily_costs = df.groupby(pd.Grouper(key="timestamp", freq="D"))["cost"].sum().reset_index()
+        fig_daily_cost = px.line(
+            daily_costs,
+            x="timestamp",
+            y="cost",
+            title="Daily Cost Trend",
+            labels={"cost": "Cost ($)", "timestamp": "Date"},
+            height=400,
+        )
+        st.plotly_chart(fig_daily_cost, use_container_width=True)
+
+    # Token usage by model
+    st.subheader("Token Usage by Model")
+
+    token_summary = (
+        df.groupby("model")
+        .agg(
+            {
+                "input_tokens": "sum",
+                "cache_creation_input_tokens": "sum",
+                "cache_read_input_tokens": "sum",
+                "output_tokens": "sum",
+                "cost": "sum",
+            }
+        )
+        .round(0)
+    )
+
+    # Add percentage columns
+    total_input = token_summary[["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]].sum().sum()
+    total_output = token_summary["output_tokens"].sum()
+
+    token_summary["input_pct"] = (
+        token_summary[["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]].sum(axis=1)
+        / total_input
+        * 100
+    ).round(1)
+    token_summary["output_pct"] = (token_summary["output_tokens"] / total_output * 100).round(1)
+    token_summary["cost_pct"] = (token_summary["cost"] / total_cost * 100).round(1)
+
+    # Format for display
+    display_cols = {
+        "input_tokens": "Input Tokens",
+        "cache_creation_input_tokens": "Cache Creation",
+        "cache_read_input_tokens": "Cache Read",
+        "output_tokens": "Output Tokens",
+        "cost": "Cost ($)",
+        "input_pct": "Input %",
+        "output_pct": "Output %",
+        "cost_pct": "Cost %",
+    }
+
+    token_summary = token_summary.rename(columns=display_cols)
+    st.dataframe(
+        token_summary.style.format(
+            {
+                "Input Tokens": "{:,.0f}",
+                "Cache Creation": "{:,.0f}",
+                "Cache Read": "{:,.0f}",
+                "Output Tokens": "{:,.0f}",
+                "Cost ($)": "${:.2f}",
+                "Input %": "{:.1f}%",
+                "Output %": "{:.1f}%",
+                "Cost %": "{:.1f}%",
+            }
+        ),
+        use_container_width=True,
+    )
+
+
 def show_heatmap(df):
     """Display GitHub-style heatmap"""
     st.header("📅 Usage Frequency Heatmap")
@@ -493,6 +679,9 @@ def main():
 
         # Model analysis
         show_model_analysis(df)
+
+        # Token and cost analysis
+        show_token_and_cost_analysis(df)
 
         # Heatmap
         show_heatmap(df)
