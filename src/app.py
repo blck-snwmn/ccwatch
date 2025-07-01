@@ -1,6 +1,6 @@
 import glob
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
@@ -71,13 +71,16 @@ def load_logs_with_duckdb(cache_key):
 
     conn = duckdb.connect(":memory:")
 
+    # Load ICU extension for timezone support
+    conn.execute("LOAD icu")
+
     # Use glob pattern to read all JSONL files at once
     glob_pattern = str(CLAUDE_PROJECTS_PATH / JSONL_PATTERN)
 
     query = f"""
     SELECT 
         filename as source_file,
-        timestamp,
+        timezone(current_setting('TimeZone'), timestamp::TIMESTAMP) as timestamp,
         type as log_type,
         TRY_CAST(message.role AS VARCHAR) as role,
         TRY_CAST(message.content AS VARCHAR) as message_content,
@@ -100,7 +103,8 @@ def load_logs_with_duckdb(cache_key):
 
     try:
         df = conn.execute(query).df()
-        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        # Timestamp is already in local timezone from DuckDB
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
         df["project_path"] = df["source_file"].apply(lambda x: Path(x).parent.name)
         df["session_id"] = df["session_id"].astype(str)
 
@@ -158,7 +162,8 @@ def show_metrics(df):
         st.metric(
             "Sessions",
             df["session_id"].nunique(),
-            help="Number of unique ClaudeCode sessions. Each session represents a distinct conversation or work period.",
+            help="Number of unique ClaudeCode sessions. "
+            "Each session represents a distinct conversation or work period.",
         )
     with col3:
         st.metric("Projects", df["project_path"].nunique(), help="Number of unique projects where ClaudeCode was used.")
@@ -190,7 +195,9 @@ def show_metrics(df):
         )
     with col4:
         # Calculate 24-hour activity
-        last_24h = datetime.now(tz=df["timestamp"].dt.tz) - pd.Timedelta(hours=24)
+        # Get the timezone from the first timestamp
+        tz = df["timestamp"].dt.tz if not df.empty else None
+        last_24h = pd.Timestamp.now(tz=tz) - pd.Timedelta(hours=24)
         recent_count = len(df[df["timestamp"] > last_24h])
         st.metric("24h Activity", recent_count, help="Number of AI responses in the last 24 hours.")
 
@@ -262,7 +269,9 @@ def show_overall_graphs(df):
     # 24-hour activity timeline
     st.subheader("📊 24-Hour Activity Timeline")
     st.caption("Recent activity pattern with 5-minute granularity")
-    last_24h = datetime.now(tz=df["timestamp"].dt.tz) - pd.Timedelta(hours=24)
+    # Get the timezone from the dataframe
+    tz = df["timestamp"].dt.tz if not df.empty else None
+    last_24h = pd.Timestamp.now(tz=tz) - pd.Timedelta(hours=24)
     recent_df = df[df["timestamp"] > last_24h]
 
     if len(recent_df) > 0:
@@ -706,9 +715,9 @@ def show_project_insights(df):
 
     with col2:
         recent_projects = project_stats.sort_values("last_use", ascending=False).head(10)
-        recent_projects["days_since_last_use"] = (
-            datetime.now(tz=recent_projects["last_use"].dt.tz) - recent_projects["last_use"]
-        ).dt.days
+        # Get timezone from last_use column
+        tz = recent_projects["last_use"].dt.tz if not recent_projects.empty else None
+        recent_projects["days_since_last_use"] = (pd.Timestamp.now(tz=tz) - recent_projects["last_use"]).dt.days
 
         fig_recent = px.scatter(
             recent_projects,
@@ -754,6 +763,16 @@ def main():
         st.write("📊 Monitoring Status")
         st.write("- Auto-refresh: Every 5 minutes")
         st.write(f"- Update Count: {st.session_state['update_count']}")
+
+        # Get and display current timezone
+        try:
+            conn_tz = duckdb.connect(":memory:")
+            conn_tz.execute("LOAD icu")
+            current_tz = conn_tz.execute("SELECT current_setting('TimeZone') as tz").fetchone()[0]
+            conn_tz.close()
+            st.write(f"- Timezone: {current_tz}")
+        except Exception:
+            st.write("- Timezone: System Default")
 
         st.divider()
         if st.button("🔄 Manual Refresh", use_container_width=True):
