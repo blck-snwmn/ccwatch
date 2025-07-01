@@ -31,8 +31,10 @@ duckdb -c "SELECT * FROM read_json_auto('/path/to/file.jsonl', format='newline_d
 ```
 
 ### Error Checking
-- Errors are automatically logged to `error.log`
-- Check errors with `cat error.log`
+- Errors are automatically logged to `logs/ccwatch.log` in JSON format
+- Check errors with `cat logs/ccwatch.log | jq .`
+- View latest errors: `tail -n 20 logs/ccwatch.log | jq .`
+- Filter by log level: `cat logs/ccwatch.log | jq 'select(.level == "ERROR")'`
 
 ## Code Quality Management (Ruff)
 

@@ -21,3 +21,4 @@ wheels/
 .DS_Store
 
 *.log
+logs/

@@ -10,13 +10,17 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
+from utils.logging_config import get_logger, log_with_context
+
+# ロガーの初期化
+logger = get_logger()
+
 st.set_page_config(page_title="ccwatch - ClaudeCode Monitor", layout="wide")
 
 # Allow overriding the path via environment variable
 DEFAULT_CLAUDE_PATH = Path.home() / ".claude" / "projects"
 CLAUDE_PROJECTS_PATH = Path(os.getenv("CLAUDE_PROJECTS_PATH", str(DEFAULT_CLAUDE_PATH)))
 JSONL_PATTERN = "**/*.jsonl"
-ERROR_LOG_FILE = "error.log"
 MAX_PROJECTS_TO_SHOW = 10
 CHECK_INTERVAL = 5 * 60  # 5 minutes (in seconds)
 
@@ -63,6 +67,8 @@ def load_logs_with_duckdb(cache_key):
     """
     _ = cache_key  # Used for cache control
 
+    start_time = datetime.now()
+
     conn = duckdb.connect(":memory:")
 
     # Use glob pattern to read all JSONL files at once
@@ -89,6 +95,9 @@ def load_logs_with_duckdb(cache_key):
     WHERE type = 'assistant'
     """
 
+    # DEBUG: Executing DuckDB query
+    log_with_context(logger, "DEBUG", "Executing DuckDB query", glob_pattern=glob_pattern)
+
     try:
         df = conn.execute(query).df()
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
@@ -107,11 +116,29 @@ def load_logs_with_duckdb(cache_key):
         )
         df["total_tokens"] = df["effective_input_tokens"] + df["output_tokens"]
 
+        # DEBUG: Query completed
+        duration = (datetime.now() - start_time).total_seconds()
+        log_with_context(
+            logger,
+            "DEBUG",
+            "DuckDB query completed successfully",
+            duration_seconds=duration,
+            rows_loaded=len(df),
+            unique_files=df["source_file"].nunique(),
+        )
+
         return df
     except Exception as e:
         st.error(f"Error loading JSONL files: {e}")
-        with open(ERROR_LOG_FILE, "a") as f:
-            f.write(f"[{datetime.now()}] Error: {e}\n")
+        log_with_context(
+            logger,
+            "ERROR",
+            "Failed to load JSONL files",
+            error_type=type(e).__name__,
+            error_message=str(e),
+            path=str(CLAUDE_PROJECTS_PATH),
+            glob_pattern=glob_pattern,
+        )
         return None
     finally:
         conn.close()
@@ -703,6 +730,9 @@ def main():
     st.title("🔍 ccwatch - ClaudeCode Monitor")
     st.markdown("Monitor and visualize ClaudeCode logs")
 
+    # アプリケーション起動ログ
+    log_with_context(logger, "INFO", "ccwatch application started", claude_path=str(CLAUDE_PROJECTS_PATH))
+
     # Auto-refresh every 5 minutes (in milliseconds)
     count = st_autorefresh(interval=CHECK_INTERVAL * 1000, limit=None, key="autorefresh")
 
@@ -748,9 +778,22 @@ def main():
         return
 
     cache_key = st.session_state["update_count"]
+
+    # データ読み込み開始ログ
+    log_with_context(logger, "INFO", "Starting data load", update_count=cache_key, files_found=len(jsonl_files))
+
     df = load_logs_with_duckdb(cache_key)
 
     if df is not None and not df.empty:
+        # データ読み込み成功ログ
+        log_with_context(
+            logger,
+            "INFO",
+            "Data loaded successfully",
+            rows=len(df),
+            sessions=df["session_id"].nunique(),
+            projects=df["project_path"].nunique(),
+        )
         # Display metrics
         show_metrics(df)
 
@@ -779,6 +822,7 @@ def main():
         st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     else:
         st.error("Failed to load data")
+        log_with_context(logger, "ERROR", "Failed to load data - DataFrame is None or empty")
 
 
 if __name__ == "__main__":
