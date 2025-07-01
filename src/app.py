@@ -1,6 +1,6 @@
 import glob
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
@@ -10,55 +10,30 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
+from config import AppConfig
 from utils.logging_config import get_logger, log_with_context
 
 # ロガーの初期化
 logger = get_logger()
 
+# 設定の初期化
+config = AppConfig.from_env()
+
 st.set_page_config(page_title="ccwatch - ClaudeCode Monitor", layout="wide")
-
-# Allow overriding the path via environment variable
-DEFAULT_CLAUDE_PATH = Path.home() / ".claude" / "projects"
-CLAUDE_PROJECTS_PATH = Path(os.getenv("CLAUDE_PROJECTS_PATH", str(DEFAULT_CLAUDE_PATH)))
-JSONL_PATTERN = "**/*.jsonl"
-MAX_PROJECTS_TO_SHOW = 10
-CHECK_INTERVAL = 5 * 60  # 5 minutes (in seconds)
-
-# Model pricing information (per 1M tokens)
-# Source: https://docs.anthropic.com/en/docs/about-claude/models (2025-01)
-MODEL_PRICING = {
-    # Claude Sonnet 3.5 / 3.7
-    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
-    "claude-3-5-sonnet-20240620": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
-    # Claude Opus 3
-    "claude-3-opus-20240229": {"input": 15.00, "output": 75.00, "cache_read": 1.50},
-    # Claude Sonnet 3
-    "claude-3-sonnet-20240229": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
-    # Claude Haiku 3.5
-    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00, "cache_read": 0.08},
-    # Claude Haiku 3
-    "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25, "cache_read": 0.03},
-    # Claude Opus 4
-    "claude-opus-4-20250514": {"input": 15.00, "output": 75.00, "cache_read": 1.50},
-    # Claude Sonnet 4 (if model ID exists)
-    "claude-sonnet-4": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
-    # Default pricing for unknown models
-    "default": {"input": 3.00, "output": 15.00, "cache_read": 0.30},
-}
 
 
 def get_jsonl_files():
     """Search for ClaudeCode project log files"""
-    if not CLAUDE_PROJECTS_PATH.exists():
-        st.warning(f"ClaudeCode projects directory not found: {CLAUDE_PROJECTS_PATH}")
+    if not config.claude_projects_path.exists():
+        st.warning(f"ClaudeCode projects directory not found: {config.claude_projects_path}")
         return []
 
-    pattern = str(CLAUDE_PROJECTS_PATH / JSONL_PATTERN)
+    pattern = str(config.claude_projects_path / config.jsonl_pattern)
     files = glob.glob(pattern, recursive=True)
     return sorted(files, key=os.path.getmtime, reverse=True)
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=config.cache_ttl)
 def load_logs_with_duckdb(cache_key):
     """Load JSONL files directly using DuckDB
 
@@ -75,7 +50,7 @@ def load_logs_with_duckdb(cache_key):
     conn.execute("LOAD icu")
 
     # Use glob pattern to read all JSONL files at once
-    glob_pattern = str(CLAUDE_PROJECTS_PATH / JSONL_PATTERN)
+    glob_pattern = str(config.claude_projects_path / config.jsonl_pattern)
 
     query = f"""
     SELECT 
@@ -140,7 +115,7 @@ def load_logs_with_duckdb(cache_key):
             "Failed to load JSONL files",
             error_type=type(e).__name__,
             error_message=str(e),
-            path=str(CLAUDE_PROJECTS_PATH),
+            path=str(config.claude_projects_path),
             glob_pattern=glob_pattern,
         )
         return None
@@ -362,8 +337,8 @@ def show_model_analysis(df):
     col1, col2 = st.columns(2)
 
     with col1:
-        # Get top 10 projects by AI response count
-        project_totals = df["project_path"].value_counts().head(10)
+        # Get top projects by AI response count
+        project_totals = df["project_path"].value_counts().head(config.max_projects_to_show)
 
         # Get model breakdown for these projects
         model_project_data = df.groupby(["project_path", "model"]).size().reset_index(name="count")
@@ -389,7 +364,7 @@ def show_model_analysis(df):
             y="project_path",
             color="model",
             orientation="h",
-            title="Model Usage by Project (Top 10 Projects)",
+            title=f"Model Usage by Project (Top {config.max_projects_to_show} Projects)",
             height=400,
             category_orders={"project_path": project_totals.index.tolist()[::-1]},  # Reverse for correct display
         )
@@ -412,7 +387,7 @@ def show_model_analysis(df):
 def calculate_cost(row):
     """Calculate cost for a single row based on model and token usage"""
     model = row["model"]
-    pricing = MODEL_PRICING.get(model, MODEL_PRICING["default"])
+    pricing = config.get_model_pricing(model)
 
     # Calculate costs (pricing is per 1M tokens)
     input_cost = (row["input_tokens"] + row["cache_creation_input_tokens"]) * pricing["input"] / 1_000_000
@@ -672,9 +647,10 @@ def show_recent_logs(df):
 
     recent_logs = df.nlargest(20, "timestamp")[["timestamp", "model", "session_id", "project_path", "message_content"]]
 
-    message_preview_length = 100
     recent_logs["message_content"] = recent_logs["message_content"].apply(
-        lambda x: str(x)[:message_preview_length] + "..." if x and len(str(x)) > message_preview_length else x
+        lambda x: str(x)[: config.message_preview_length] + "..."
+        if x and len(str(x)) > config.message_preview_length
+        else x
     )
 
     st.dataframe(recent_logs, use_container_width=True, height=400)
@@ -700,12 +676,12 @@ def show_project_insights(df):
     col1, col2 = st.columns(2)
 
     with col1:
-        top_projects = project_stats.head(10)
+        top_projects = project_stats.head(config.max_projects_to_show)
         fig_top_projects = px.bar(
             x=top_projects["ai_response_count"],
             y=top_projects.index,
             orientation="h",
-            title="Top 10 Projects (by AI Response Count)",
+            title=f"Top {config.max_projects_to_show} Projects (by AI Response Count)",
             labels={"x": "AI Response Count", "y": "Project"},
             height=400,
         )
@@ -714,7 +690,7 @@ def show_project_insights(df):
         st.plotly_chart(fig_top_projects, use_container_width=True)
 
     with col2:
-        recent_projects = project_stats.sort_values("last_use", ascending=False).head(10)
+        recent_projects = project_stats.sort_values("last_use", ascending=False).head(config.max_projects_to_show)
         # Get timezone from last_use column
         tz = recent_projects["last_use"].dt.tz if not recent_projects.empty else None
         recent_projects["days_since_last_use"] = (pd.Timestamp.now(tz=tz) - recent_projects["last_use"]).dt.days
@@ -740,10 +716,10 @@ def main():
     st.markdown("Monitor and visualize ClaudeCode logs")
 
     # アプリケーション起動ログ
-    log_with_context(logger, "INFO", "ccwatch application started", claude_path=str(CLAUDE_PROJECTS_PATH))
+    log_with_context(logger, "INFO", "ccwatch application started", claude_path=str(config.claude_projects_path))
 
     # Auto-refresh every 5 minutes (in milliseconds)
-    count = st_autorefresh(interval=CHECK_INTERVAL * 1000, limit=None, key="autorefresh")
+    count = st_autorefresh(interval=config.check_interval * 1000, limit=None, key="autorefresh")
 
     # Initialize session state
     if "update_count" not in st.session_state:
@@ -761,7 +737,7 @@ def main():
         st.caption("ClaudeCode Monitor")
 
         st.write("📊 Monitoring Status")
-        st.write("- Auto-refresh: Every 5 minutes")
+        st.write(f"- Auto-refresh: Every {config.check_interval // 60} minutes")
         st.write(f"- Update Count: {st.session_state['update_count']}")
 
         # Get and display current timezone
