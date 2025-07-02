@@ -52,7 +52,7 @@ def load_logs_with_duckdb(cache_key):
     # Use glob pattern to read all JSONL files at once
     glob_pattern = str(config.claude_projects_path / config.jsonl_pattern)
 
-    query = f"""
+    query = """
     SELECT 
         filename as source_file,
         timezone(current_setting('TimeZone'), timestamp::TIMESTAMP) as timestamp,
@@ -69,7 +69,7 @@ def load_logs_with_duckdb(cache_key):
         TRY_CAST(message.usage.cache_creation_input_tokens AS BIGINT) as cache_creation_input_tokens,
         TRY_CAST(message.usage.cache_read_input_tokens AS BIGINT) as cache_read_input_tokens,
         TRY_CAST(message.usage.output_tokens AS BIGINT) as output_tokens
-    FROM read_json_auto('{glob_pattern}', format='newline_delimited', filename=true)
+    FROM read_json_auto(?, format='newline_delimited', filename=true)
     WHERE type = 'assistant'
     """
 
@@ -77,7 +77,7 @@ def load_logs_with_duckdb(cache_key):
     log_with_context(logger, "DEBUG", "Executing DuckDB query", glob_pattern=glob_pattern)
 
     try:
-        df = conn.execute(query).df()
+        df = conn.execute(query, [glob_pattern]).df()
         # Timestamp is already in local timezone from DuckDB
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         df["project_path"] = df["source_file"].apply(lambda x: Path(x).parent.name)
