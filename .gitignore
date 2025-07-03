@@ -10,6 +10,12 @@ wheels/
 .venv
 .ruff_cache
 
+# Testing
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
 # Streamlit
 .streamlit/
 
