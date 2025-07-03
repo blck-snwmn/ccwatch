@@ -12,6 +12,7 @@ from streamlit_autorefresh import st_autorefresh
 
 from config import AppConfig
 from utils.logging_config import get_logger, log_with_context
+from utils.session_utils import calculate_session_metrics
 
 # ロガーの初期化
 logger = get_logger()
@@ -280,34 +281,29 @@ def show_session_analysis(df):
     st.header("🎯 Session Analysis")
     st.caption("Analysis of ClaudeCode session duration and activity patterns")
 
-    session_data = df.groupby("session_id").agg(
-        {
-            "timestamp": ["min", "max", "count"],
-            "model": lambda x: x.mode()[0] if not x.empty else None,
-            "project_path": "first",
-        }
-    )
-
-    session_data.columns = ["start_time", "end_time", "ai_response_count", "primary_model", "project"]
-    session_data["duration"] = (session_data["end_time"] - session_data["start_time"]).dt.total_seconds() / 60
+    # Calculate comprehensive session metrics
+    session_data = calculate_session_metrics(df, idle_threshold_minutes=30)
     session_data = session_data.sort_values("start_time", ascending=False)
 
     col1, col2 = st.columns(2)
 
     with col1:
+        # Show active duration distribution
         duration_bins = [0, 5, 15, 30, 60, float("inf")]
         duration_labels = ["0-5 min", "5-15 min", "15-30 min", "30-60 min", "60+ min"]
-        session_data["duration_category"] = pd.cut(session_data["duration"], bins=duration_bins, labels=duration_labels)
+        session_data["duration_category"] = pd.cut(
+            session_data["active_duration_minutes"], bins=duration_bins, labels=duration_labels
+        )
 
         duration_counts = session_data["duration_category"].value_counts()
         fig_duration = px.bar(
             x=duration_counts.index,
             y=duration_counts.values,
-            title="Session Duration Distribution",
-            labels={"x": "Session Duration", "y": "Number of Sessions"},
+            title="Active Session Duration Distribution",
+            labels={"x": "Active Duration", "y": "Number of Sessions"},
             height=400,
         )
-        fig_duration.update_traces(hovertemplate="Duration: %{x}<br>Sessions: %{y}<extra></extra>")
+        fig_duration.update_traces(hovertemplate="Active Duration: %{x}<br>Sessions: %{y}<extra></extra>")
         st.plotly_chart(fig_duration, use_container_width=True)
 
     with col2:
@@ -327,6 +323,71 @@ def show_session_analysis(df):
         )
         fig_messages.update_traces(hovertemplate="AI Responses: %{x}<br>Sessions: %{y}<extra></extra>")
         st.plotly_chart(fig_messages, use_container_width=True)
+
+    # Session activity insights
+    st.subheader("📊 Session Activity Insights")
+    st.caption("Detailed analysis of session patterns and idle time")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        avg_active = session_data["active_duration_minutes"].mean()
+        st.metric(
+            "Avg Active Duration",
+            f"{avg_active:.1f} min",
+            help="Average active session duration excluding idle periods (>30 min gaps).",
+        )
+    with col2:
+        avg_idle_pct = session_data["idle_percentage"].mean()
+        st.metric(
+            "Avg Idle Time", f"{avg_idle_pct:.1f}%", help="Average percentage of idle time in sessions (gaps >30 min)."
+        )
+    with col3:
+        avg_msg_per_min = session_data["messages_per_minute"].mean()
+        st.metric(
+            "Avg Messages/Min",
+            f"{avg_msg_per_min:.2f}",
+            help="Average AI responses per active minute across all sessions.",
+        )
+    with col4:
+        sessions_with_idle = (session_data["idle_periods"] > 0).sum()
+        idle_pct = sessions_with_idle / len(session_data) * 100
+        st.metric(
+            "Sessions with Idle",
+            f"{sessions_with_idle} ({idle_pct:.1f}%)",
+            help="Number of sessions that had idle periods (>30 min gaps).",
+        )
+
+    # Activity type distribution
+    col1, col2 = st.columns(2)
+    with col1:
+        activity_counts = session_data["activity_type"].value_counts()
+        fig_activity = px.pie(
+            values=activity_counts.values,
+            names=activity_counts.index,
+            title="Session Activity Types",
+            height=350,
+        )
+        fig_activity.update_traces(
+            hovertemplate="Type: %{label}<br>Sessions: %{value}<br>Percentage: %{percent}<extra></extra>"
+        )
+        st.plotly_chart(fig_activity, use_container_width=True)
+
+    with col2:
+        # Scatter plot of duration vs messages
+        fig_scatter = px.scatter(
+            session_data.head(100),  # Limit to recent 100 sessions for clarity
+            x="active_duration_minutes",
+            y="ai_response_count",
+            color="activity_type",
+            size="total_tokens",
+            title="Session Activity Pattern (Recent 100)",
+            labels={"active_duration_minutes": "Active Duration (min)", "ai_response_count": "AI Responses"},
+            height=350,
+        )
+        fig_scatter.update_traces(
+            hovertemplate="Duration: %{x:.1f} min<br>AI Responses: %{y}<br>Activity: %{customdata[0]}<extra></extra>"
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True)
 
 
 def show_model_analysis(df):

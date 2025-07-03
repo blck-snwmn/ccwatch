@@ -86,6 +86,10 @@ ignore = [
     "PLR2004", # マジックナンバーの使用を許可
     "PLC0415", # import文の位置（テストでは必要に応じて）
 ]
+"src/utils/session_utils.py" = [
+    "PLR2004", # マジックナンバーの使用を許可（活動カテゴリの閾値）
+    "PLR0911", # 多数のreturn文を許可（活動カテゴリ分類）
+]
 
 [tool.ruff.lint.isort]
 # import文のグループ化設定
