@@ -19,21 +19,31 @@ class TestAppConfig:
         config = AppConfig()
 
         # Path settings
-        assert config.claude_projects_path == Path.home() / ".claude" / "projects"
-        assert config.jsonl_pattern == "**/*.jsonl"
+        assert config.claude_projects_path == Path.home() / ".claude" / "projects", (
+            f"Expected default Claude projects path but got {config.claude_projects_path}"
+        )
+        assert config.jsonl_pattern == "**/*.jsonl", (
+            f"Expected default JSONL pattern '**/*.jsonl' but got '{config.jsonl_pattern}'"
+        )
 
         # Display settings
-        assert config.max_projects_to_show == 10
-        assert config.check_interval == 300
-        assert config.message_preview_length == 100
+        assert config.max_projects_to_show == 10, (
+            f"Expected max_projects_to_show=10 but got {config.max_projects_to_show}"
+        )
+        assert config.check_interval == 300, f"Expected check_interval=300 but got {config.check_interval}"
+        assert config.message_preview_length == 100, (
+            f"Expected message_preview_length=100 but got {config.message_preview_length}"
+        )
 
         # Cache settings
-        assert config.cache_ttl == 3600
+        assert config.cache_ttl == 3600, f"Expected cache_ttl=3600 but got {config.cache_ttl}"
 
         # Model pricing
-        assert isinstance(config.model_pricing, dict)
-        assert "claude-3-5-sonnet-20241022" in config.model_pricing
-        assert "default" in config.model_pricing
+        assert isinstance(config.model_pricing, dict), (
+            f"Expected model_pricing to be dict but got {type(config.model_pricing)}"
+        )
+        assert "claude-3-5-sonnet-20241022" in config.model_pricing, "Sonnet model pricing not found in config"
+        assert "default" in config.model_pricing, "Default model pricing not found in config"
 
     def test_from_env_with_valid_values(self, mock_env_vars):
         """Test configuration from environment variables"""
@@ -48,12 +58,18 @@ class TestAppConfig:
 
         config = AppConfig.from_env()
 
-        assert config.claude_projects_path == Path("/custom/path")
-        assert config.jsonl_pattern == "*.jsonl"
-        assert config.max_projects_to_show == 20
-        assert config.check_interval == 600
-        assert config.message_preview_length == 200
-        assert config.cache_ttl == 7200
+        assert config.claude_projects_path == Path("/custom/path"), (
+            f"Expected custom path but got {config.claude_projects_path}"
+        )
+        assert config.jsonl_pattern == "*.jsonl", f"Expected custom pattern '*.jsonl' but got '{config.jsonl_pattern}'"
+        assert config.max_projects_to_show == 20, (
+            f"Expected max_projects_to_show=20 but got {config.max_projects_to_show}"
+        )
+        assert config.check_interval == 600, f"Expected check_interval=600 but got {config.check_interval}"
+        assert config.message_preview_length == 200, (
+            f"Expected message_preview_length=200 but got {config.message_preview_length}"
+        )
+        assert config.cache_ttl == 7200, f"Expected cache_ttl=7200 but got {config.cache_ttl}"
 
     def test_from_env_with_invalid_values(self, mock_env_vars):
         """Test configuration with invalid environment variable values"""
@@ -67,10 +83,10 @@ class TestAppConfig:
         config = AppConfig.from_env()
 
         # Invalid values should fall back to defaults
-        assert config.max_projects_to_show == 10
-        assert config.check_interval == 300
-        assert config.message_preview_length == 100
-        assert config.cache_ttl == 3600
+        assert config.max_projects_to_show == 10, "Invalid max_projects_to_show should fall back to default 10"
+        assert config.check_interval == 300, "Invalid check_interval should fall back to default 300"
+        assert config.message_preview_length == 100, "Invalid message_preview_length should fall back to default 100"
+        assert config.cache_ttl == 3600, "Invalid cache_ttl should fall back to default 3600"
 
     def test_from_env_partial_override(self, mock_env_vars):
         """Test partial environment variable override"""
@@ -116,10 +132,16 @@ class TestAppConfig:
         config = AppConfig()
 
         unknown_pricing = config.get_model_pricing("claude-unknown-model-xyz")
-        assert unknown_pricing == config.model_pricing["default"]
-        assert unknown_pricing["input"] == 3.00
-        assert unknown_pricing["output"] == 15.00
-        assert unknown_pricing["cache_read"] == 0.30
+        assert unknown_pricing == config.model_pricing["default"], "Unknown model should use default pricing"
+        assert unknown_pricing["input"] == 3.00, (
+            f"Expected default input price $3.00 but got ${unknown_pricing['input']}"
+        )
+        assert unknown_pricing["output"] == 15.00, (
+            f"Expected default output price $15.00 but got ${unknown_pricing['output']}"
+        )
+        assert unknown_pricing["cache_read"] == 0.30, (
+            f"Expected default cache read price $0.30 but got ${unknown_pricing['cache_read']}"
+        )
 
     def test_model_pricing_completeness(self):
         """Test that all model pricing entries have required fields"""
@@ -155,6 +177,12 @@ class TestAppConfig:
         config = AppConfig()
         pricing = config.get_model_pricing(model)
 
-        assert pricing["input"] == expected_input
-        assert pricing["output"] == expected_output
-        assert pricing["cache_read"] == expected_cache
+        assert pricing["input"] == expected_input, (
+            f"Model {model}: expected input price ${expected_input} but got ${pricing['input']}"
+        )
+        assert pricing["output"] == expected_output, (
+            f"Model {model}: expected output price ${expected_output} but got ${pricing['output']}"
+        )
+        assert pricing["cache_read"] == expected_cache, (
+            f"Model {model}: expected cache read price ${expected_cache} but got ${pricing['cache_read']}"
+        )

@@ -30,8 +30,8 @@ class TestLoadLogsWithDuckDB:
         df = load_logs_with_duckdb(cache_key=1)
 
         # Check dataframe is not empty
-        assert df is not None
-        assert len(df) > 0
+        assert df is not None, "Failed to load data from DuckDB - DataFrame is None"
+        assert len(df) > 0, f"Expected non-empty DataFrame but got {len(df)} rows"
 
         # Check required columns exist
         required_columns = [
@@ -54,7 +54,8 @@ class TestLoadLogsWithDuckDB:
             "effective_input_tokens",
             "total_tokens",
         ]
-        assert all(col in df.columns for col in required_columns)
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        assert not missing_columns, f"Missing required columns: {missing_columns}"
 
     def test_load_logs_filters_assistant_only(self, tmp_path, monkeypatch):
         """Test that only assistant messages are loaded"""
@@ -133,8 +134,8 @@ class TestLoadLogsWithDuckDB:
 
         # Should only have assistant messages
         assert len(df) == 2  # Only 2 assistant messages
-        assert all(df["log_type"] == "assistant")
-        assert all(df["role"] == "assistant")
+        assert all(df["log_type"] == "assistant"), "Found non-assistant log types in filtered data"
+        assert all(df["role"] == "assistant"), "Found non-assistant roles in filtered data"
 
     def test_load_logs_token_calculations(self, tmp_path, monkeypatch):
         """Test token calculation logic"""
@@ -180,17 +181,25 @@ class TestLoadLogsWithDuckDB:
 
         # Check token calculations
         row = df.iloc[0]
-        assert int(row["input_tokens"]) == 1000
-        assert int(row["cache_creation_input_tokens"]) == 200
-        assert int(row["cache_read_input_tokens"]) == 300
-        assert int(row["output_tokens"]) == 500
+        assert int(row["input_tokens"]) == 1000, f"Expected 1000 input tokens but got {row['input_tokens']}"
+        assert int(row["cache_creation_input_tokens"]) == 200, (
+            f"Expected 200 cache creation tokens but got {row['cache_creation_input_tokens']}"
+        )
+        assert int(row["cache_read_input_tokens"]) == 300, (
+            f"Expected 300 cache read tokens but got {row['cache_read_input_tokens']}"
+        )
+        assert int(row["output_tokens"]) == 500, f"Expected 500 output tokens but got {row['output_tokens']}"
 
         # Check effective input tokens calculation (cache_read counts as 10%)
         expected_effective = 1000 + 200 + (300 * 0.1)
-        assert row["effective_input_tokens"] == expected_effective
+        assert row["effective_input_tokens"] == expected_effective, (
+            f"Expected effective input tokens {expected_effective} but got {row['effective_input_tokens']}"
+        )
 
         # Check total tokens
-        assert row["total_tokens"] == expected_effective + 500
+        assert row["total_tokens"] == expected_effective + 500, (
+            f"Expected total tokens {expected_effective + 500} but got {row['total_tokens']}"
+        )
 
     def test_load_logs_null_token_handling(self, tmp_path, monkeypatch):
         """Test handling of missing/null token values"""
@@ -236,10 +245,14 @@ class TestLoadLogsWithDuckDB:
 
         # Check null values are filled with 0
         row = df.iloc[0]
-        assert int(row["input_tokens"]) == 1000
-        assert int(row["cache_creation_input_tokens"]) == 0  # Should be filled with 0
-        assert int(row["cache_read_input_tokens"]) == 0  # Should be filled with 0
-        assert int(row["output_tokens"]) == 500
+        assert int(row["input_tokens"]) == 1000, f"Expected 1000 input tokens but got {row['input_tokens']}"
+        assert int(row["cache_creation_input_tokens"]) == 0, (
+            f"Expected null cache creation tokens to be filled with 0 but got {row['cache_creation_input_tokens']}"
+        )
+        assert int(row["cache_read_input_tokens"]) == 0, (
+            f"Expected null cache read tokens to be filled with 0 but got {row['cache_read_input_tokens']}"
+        )
+        assert int(row["output_tokens"]) == 500, f"Expected 500 output tokens but got {row['output_tokens']}"
 
     def test_load_logs_timezone_handling(self, tmp_path, monkeypatch):
         """Test timezone conversion in DuckDB"""
@@ -283,8 +296,8 @@ class TestLoadLogsWithDuckDB:
 
         # Check timestamp is converted to pandas datetime with timezone info
         timestamp = df.iloc[0]["timestamp"]
-        assert isinstance(timestamp, pd.Timestamp)
-        assert timestamp.tz is not None  # Should have timezone info
+        assert isinstance(timestamp, pd.Timestamp), f"Expected pandas Timestamp but got {type(timestamp)}"
+        assert timestamp.tz is not None, "Timestamp should have timezone info"
 
     def test_load_logs_project_path_extraction(self, claude_projects_with_jsonl, monkeypatch):
         """Test project path extraction from file paths"""
@@ -300,11 +313,11 @@ class TestLoadLogsWithDuckDB:
 
         # Check project paths are correctly extracted
         project_paths = df["project_path"].unique()
-        assert len(project_paths) > 0
+        assert len(project_paths) > 0, "No project paths found in loaded data"
 
         # Should match the parent directory names
         for path in project_paths:
-            assert path in ["project1", "project2"]
+            assert path in ["project1", "project2"], f"Unexpected project path: {path}"
 
     def test_load_logs_error_handling(self, tmp_path, monkeypatch):
         """Test error handling when loading fails"""

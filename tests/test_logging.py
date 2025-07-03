@@ -30,14 +30,14 @@ class TestJsonFormatter:
         formatted = formatter.format(record)
         data = json.loads(formatted)
 
-        assert data["level"] == "INFO"
-        assert data["message"] == "Test message"
-        assert data["module"] == "test"
+        assert data["level"] == "INFO", f"Expected log level 'INFO' but got '{data['level']}'"
+        assert data["message"] == "Test message", f"Expected message 'Test message' but got '{data['message']}'"
+        assert data["module"] == "test", f"Expected module 'test' but got '{data['module']}'"
         # Function name might be None when creating LogRecord manually
         assert data["function"] in ["test_json_formatter_basic", "<module>", None]
-        assert data["line"] == 10
-        assert "timestamp" in data
-        assert "exception" not in data
+        assert data["line"] == 10, f"Expected line number 10 but got {data['line']}"
+        assert "timestamp" in data, "Timestamp field is missing from log data"
+        assert "exception" not in data, "Exception field should not be present in normal log"
 
     def test_json_formatter_with_extra(self):
         """Test JSON formatting with extra data"""
@@ -56,9 +56,9 @@ class TestJsonFormatter:
         formatted = formatter.format(record)
         data = json.loads(formatted)
 
-        assert data["user_id"] == 123
-        assert data["action"] == "test_action"
-        assert data["message"] == "Debug message"
+        assert data["user_id"] == 123, f"Expected user_id 123 but got {data['user_id']}"
+        assert data["action"] == "test_action", f"Expected action 'test_action' but got '{data['action']}'"
+        assert data["message"] == "Debug message", f"Expected message 'Debug message' but got '{data['message']}'"
 
     def test_json_formatter_with_exception(self):
         """Test JSON formatting with exception info"""
@@ -82,10 +82,12 @@ class TestJsonFormatter:
         formatted = formatter.format(record)
         data = json.loads(formatted)
 
-        assert data["level"] == "ERROR"
-        assert data["message"] == "Error occurred"
-        assert "exception" in data
-        assert "ValueError: Test exception" in data["exception"]
+        assert data["level"] == "ERROR", f"Expected log level 'ERROR' but got '{data['level']}'"
+        assert data["message"] == "Error occurred", f"Expected message 'Error occurred' but got '{data['message']}'"
+        assert "exception" in data, "Exception field is missing from error log"
+        assert "ValueError: Test exception" in data["exception"], (
+            "Exception traceback should contain ValueError message"
+        )
 
 
 class TestSetupLogger:
@@ -98,8 +100,8 @@ class TestSetupLogger:
 
         logger = setup_logger("test_logger")
 
-        assert logger.name == "test_logger"
-        assert logger.level == logging.INFO
+        assert logger.name == "test_logger", f"Expected logger name 'test_logger' but got '{logger.name}'"
+        assert logger.level == logging.INFO, f"Expected log level INFO ({logging.INFO}) but got {logger.level}"
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0], logging.handlers.RotatingFileHandler)
 
@@ -115,8 +117,8 @@ class TestSetupLogger:
 
         logger = setup_logger("test_logger_env")
 
-        assert logger.level == logging.DEBUG
-        assert len(logger.handlers) == 2  # File and console handlers
+        assert logger.level == logging.DEBUG, f"Expected log level DEBUG ({logging.DEBUG}) but got {logger.level}"
+        assert len(logger.handlers) == 2, f"Expected 2 handlers (file and console) but got {len(logger.handlers)}"
 
         # Find handler types
         handler_types = {type(h).__name__ for h in logger.handlers}
@@ -167,10 +169,10 @@ class TestLogWithContext:
             log_content = f.read()
 
         log_data = json.loads(log_content.strip())
-        assert log_data["message"] == "Test message"
-        assert log_data["user_id"] == 123
-        assert log_data["action"] == "test"
-        assert log_data["level"] == "INFO"
+        assert log_data["message"] == "Test message", f"Expected message 'Test message' but got '{log_data['message']}'"
+        assert log_data["user_id"] == 123, f"Expected user_id 123 but got {log_data['user_id']}"
+        assert log_data["action"] == "test", f"Expected action 'test' but got '{log_data['action']}'"
+        assert log_data["level"] == "INFO", f"Expected log level 'INFO' but got '{log_data['level']}'"
 
     def test_log_with_context_different_levels(self, tmp_path, monkeypatch):
         """Test contextual logging with different log levels"""
@@ -190,13 +192,13 @@ class TestLogWithContext:
         with open(log_file) as f:
             log_lines = f.readlines()
 
-        assert len(log_lines) == 4
+        assert len(log_lines) == 4, f"Expected 4 log lines but got {len(log_lines)}"
 
         # Verify each log entry
         levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
         for _i, (line, expected_level) in enumerate(zip(log_lines, levels)):
             data = json.loads(line.strip())
-            assert data["level"] == expected_level
+            assert data["level"] == expected_level, f"Expected log level '{expected_level}' but got '{data['level']}'"
 
     def test_log_with_context_no_extra(self, tmp_path, monkeypatch):
         """Test contextual logging without extra data"""

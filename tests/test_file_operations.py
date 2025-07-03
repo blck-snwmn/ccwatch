@@ -30,13 +30,13 @@ class TestGetJsonlFiles:
         files = get_jsonl_files()
 
         # Should find all JSONL files
-        assert len(files) == len(expected_files)
+        assert len(files) == len(expected_files), f"Expected {len(expected_files)} files but found {len(files)}"
 
         # Convert to Path objects for comparison
         found_paths = {Path(f) for f in files}
         expected_paths = set(expected_files)
 
-        assert found_paths == expected_paths
+        assert found_paths == expected_paths, "Found files do not match expected files"
 
     def test_get_jsonl_files_sorted_by_mtime(self, claude_projects_with_jsonl, monkeypatch):
         """Test that files are sorted by modification time (newest first)"""
@@ -58,7 +58,7 @@ class TestGetJsonlFiles:
 
         # Verify they're sorted by modification time (newest first)
         mtimes = [os.path.getmtime(f) for f in files]
-        assert mtimes == sorted(mtimes, reverse=True)
+        assert mtimes == sorted(mtimes, reverse=True), "Files are not sorted by modification time (newest first)"
 
     def test_get_jsonl_files_empty_directory(self, tmp_path, monkeypatch):
         """Test behavior with empty Claude projects directory"""
@@ -74,7 +74,7 @@ class TestGetJsonlFiles:
         files = get_jsonl_files()
 
         # Should return empty list
-        assert files == []
+        assert files == [], "Expected empty list for empty directory"
 
     def test_get_jsonl_files_nonexistent_directory(self, tmp_path, monkeypatch, capsys):
         """Test behavior when Claude projects directory doesn't exist"""
@@ -97,8 +97,8 @@ class TestGetJsonlFiles:
         files = get_jsonl_files()
 
         # Should return empty list and show warning
-        assert files == []
-        assert len(warnings) == 1
+        assert files == [], "Expected empty list for non-existent directory"
+        assert len(warnings) == 1, "Expected exactly one warning for non-existent directory"
         assert "ClaudeCode projects directory not found" in warnings[0]
         assert str(nonexistent_dir) in warnings[0]
 
@@ -130,11 +130,11 @@ class TestGetJsonlFiles:
         files = get_jsonl_files()
 
         # Should find only JSONL files
-        assert len(files) == 3
+        assert len(files) == 3, f"Expected 3 JSONL files in nested directories but found {len(files)}"
 
         # Check that all JSONL files are found
         file_names = {Path(f).name for f in files}
-        assert file_names == {"logs.jsonl", "data.jsonl", "file.jsonl"}
+        assert file_names == {"logs.jsonl", "data.jsonl", "file.jsonl"}, f"Unexpected file names: {file_names}"
 
     def test_get_jsonl_files_with_custom_pattern(self, claude_projects_with_jsonl, monkeypatch):
         """Test using custom JSONL pattern"""
@@ -184,8 +184,8 @@ class TestGetJsonlFiles:
         elapsed = time.time() - start_time
 
         # Should find all 50 files quickly
-        assert len(files) == 50
-        assert elapsed < 1.0  # Should complete in less than 1 second
+        assert len(files) == 50, f"Expected 50 files but found {len(files)}"
+        assert elapsed < 1.0, f"File search took {elapsed:.2f}s, expected < 1.0s"
 
     @pytest.mark.parametrize(
         ("pattern", "expected_count"),
@@ -210,4 +210,6 @@ class TestGetJsonlFiles:
         files = get_jsonl_files()
 
         # Check expected count
-        assert len(files) == expected_count
+        assert len(files) == expected_count, (
+            f"Pattern '{pattern}' expected {expected_count} files but found {len(files)}"
+        )

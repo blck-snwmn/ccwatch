@@ -38,7 +38,9 @@ class TestCalculateCost:
         # Output: 0.3M * $15.00 = $4.50
         # Total: $4.50 + $0.06 + $4.50 = $9.06
         expected_cost = 4.50 + 0.06 + 4.50
-        assert cost == pytest.approx(expected_cost, rel=1e-5)
+        assert cost == pytest.approx(expected_cost, rel=1e-5), (
+            f"Expected cost ${expected_cost:.2f} but got ${cost:.2f} for Sonnet model"
+        )
 
     def test_calculate_cost_opus_model(self):
         """Test cost calculation for Opus model"""
@@ -61,7 +63,9 @@ class TestCalculateCost:
         # Output: 0.03M * $75.00 = $2.25
         # Total: $2.25 + $0.03 + $2.25 = $4.53
         expected_cost = 2.25 + 0.03 + 2.25
-        assert cost == pytest.approx(expected_cost, rel=1e-5)
+        assert cost == pytest.approx(expected_cost, rel=1e-5), (
+            f"Expected cost ${expected_cost:.2f} but got ${cost:.2f} for Opus model"
+        )
 
     def test_calculate_cost_haiku_model(self):
         """Test cost calculation for Haiku model"""
@@ -84,7 +88,9 @@ class TestCalculateCost:
         # Output: 0.5M * $1.25 = $0.625
         # Total: $0.25 + $0.03 + $0.625 = $0.905
         expected_cost = 0.25 + 0.03 + 0.625
-        assert cost == pytest.approx(expected_cost, rel=1e-5)
+        assert cost == pytest.approx(expected_cost, rel=1e-5), (
+            f"Expected cost ${expected_cost:.2f} but got ${cost:.2f} for Haiku model"
+        )
 
     def test_calculate_cost_unknown_model(self):
         """Test cost calculation for unknown model uses default pricing"""
@@ -107,7 +113,9 @@ class TestCalculateCost:
         # Output: 0.03M * $15.00 = $0.45
         # Total: $0.45 + $0.006 + $0.45 = $0.906
         expected_cost = 0.45 + 0.006 + 0.45
-        assert cost == pytest.approx(expected_cost, rel=1e-5)
+        assert cost == pytest.approx(expected_cost, rel=1e-5), (
+            f"Expected cost ${expected_cost:.2f} but got ${cost:.2f} for unknown model (should use default pricing)"
+        )
 
     def test_calculate_cost_zero_tokens(self):
         """Test cost calculation with zero tokens"""
@@ -123,7 +131,7 @@ class TestCalculateCost:
         )
 
         cost = calculate_cost(row)
-        assert cost == 0.0
+        assert cost == 0.0, f"Expected zero cost for zero tokens but got ${cost:.2f}"
 
     def test_calculate_cost_only_input_tokens(self):
         """Test cost calculation with only input tokens"""
@@ -141,7 +149,7 @@ class TestCalculateCost:
         cost = calculate_cost(row)
 
         # Only input cost: 1M * $3.00 = $3.00
-        assert cost == pytest.approx(3.00, rel=1e-5)
+        assert cost == pytest.approx(3.00, rel=1e-5), f"Expected cost $3.00 for input tokens only but got ${cost:.2f}"
 
     def test_calculate_cost_only_cache_tokens(self):
         """Test cost calculation with only cache tokens"""
@@ -162,7 +170,9 @@ class TestCalculateCost:
         # Cache read: 1M * $0.30 = $0.30
         # Total: $3.00 + $0.30 = $3.30
         expected_cost = 3.00 + 0.30
-        assert cost == pytest.approx(expected_cost, rel=1e-5)
+        assert cost == pytest.approx(expected_cost, rel=1e-5), (
+            f"Expected cost ${expected_cost:.2f} for cache tokens only but got ${cost:.2f}"
+        )
 
     @pytest.mark.parametrize(
         ("tokens", "expected_cost"),
@@ -189,7 +199,9 @@ class TestCalculateCost:
         )
 
         cost = calculate_cost(row)
-        assert cost == pytest.approx(expected_cost, rel=1e-3)
+        assert cost == pytest.approx(expected_cost, rel=1e-3), (
+            f"Expected cost ${expected_cost:.6f} but got ${cost:.6f} for token amounts {tokens}"
+        )
 
     def test_calculate_cost_all_models(self):
         """Test cost calculation works for all configured models"""
@@ -211,7 +223,7 @@ class TestCalculateCost:
             cost = calculate_cost(row)
 
             # Cost should be positive for any model with tokens
-            assert cost > 0, f"Cost for {model_name} should be positive"
+            assert cost > 0, f"Cost for {model_name} should be positive but got ${cost:.2f}"
 
     def test_calculate_cost_precision(self):
         """Test cost calculation maintains appropriate precision"""
@@ -234,8 +246,8 @@ class TestCalculateCost:
         # Cache read: 1 * $0.03 / 1M = $0.00000003
         # Output: 1 * $1.25 / 1M = $0.00000125
         # Total: ~$0.00000178
-        assert cost > 0
-        assert cost < 0.001  # Should be very small
+        assert cost > 0, f"Expected positive cost for minimal tokens but got ${cost:.8f}"
+        assert cost < 0.001, f"Expected cost < $0.001 for minimal tokens but got ${cost:.8f}"
 
     def test_cost_calculation_with_dataframe(self):
         """Test cost calculation on entire DataFrame"""
@@ -269,7 +281,7 @@ class TestCalculateCost:
         df["cost"] = df.apply(calculate_cost, axis=1)
 
         # All costs should be positive
-        assert all(df["cost"] > 0)
+        assert all(df["cost"] > 0), f"All costs should be positive but found: {df[df['cost'] <= 0]['cost'].tolist()}"
 
         # Verify relative costs (Opus should be most expensive per token)
         opus_row = df[df["model"].str.contains("opus")].iloc[0]
@@ -297,5 +309,9 @@ class TestCalculateCost:
         )
 
         # Opus should be most expensive, Haiku cheapest
-        assert opus_cost_per_token > sonnet_cost_per_token
-        assert sonnet_cost_per_token > haiku_cost_per_token
+        assert opus_cost_per_token > sonnet_cost_per_token, (
+            f"Opus (${opus_cost_per_token:.6f}/token) should be more expensive than Sonnet (${sonnet_cost_per_token:.6f}/token)"
+        )
+        assert sonnet_cost_per_token > haiku_cost_per_token, (
+            f"Sonnet (${sonnet_cost_per_token:.6f}/token) should be more expensive than Haiku (${haiku_cost_per_token:.6f}/token)"
+        )
