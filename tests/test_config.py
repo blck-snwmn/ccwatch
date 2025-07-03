@@ -186,3 +186,44 @@ class TestAppConfig:
         assert pricing["cache_read"] == expected_cache, (
             f"Model {model}: expected cache read price ${expected_cache} but got ${pricing['cache_read']}"
         )
+
+    def test_config_with_extreme_values(self, mock_env_vars):
+        """Test configuration with extreme boundary values"""
+        mock_env_vars(
+            MAX_PROJECTS_TO_SHOW="999999999",
+            CHECK_INTERVAL="0",  # Zero interval
+            MESSAGE_PREVIEW_LENGTH="10000000",  # Very large preview
+            CACHE_TTL="-1",  # Negative TTL
+        )
+
+        config = AppConfig.from_env()
+
+        # Large values should be accepted
+        assert config.max_projects_to_show == 999999999, (
+            f"Expected max_projects_to_show=999999999 but got {config.max_projects_to_show}"
+        )
+        assert config.message_preview_length == 10000000, (
+            f"Expected message_preview_length=10000000 but got {config.message_preview_length}"
+        )
+
+        # Numeric values are accepted even if they're extreme (current behavior)
+        assert config.check_interval == 0, "Zero check_interval is accepted (current behavior)"
+        assert config.cache_ttl == -1, "Negative cache_ttl is accepted (current behavior)"
+
+    def test_empty_model_name_uses_default_pricing(self):
+        """Test that empty model name falls back to default pricing"""
+        config = AppConfig()
+
+        pricing = config.get_model_pricing("")
+        assert pricing == config.model_pricing["default"], "Empty model name should use default pricing"
+        assert pricing["input"] == 3.00, f"Expected default input price $3.00 but got ${pricing['input']}"
+
+    def test_very_long_model_name(self):
+        """Test configuration with extremely long model name"""
+        config = AppConfig()
+
+        # Create a very long model name (1000+ characters)
+        long_model_name = "claude-" + "x" * 1000 + "-model"
+        pricing = config.get_model_pricing(long_model_name)
+
+        assert pricing == config.model_pricing["default"], "Very long unknown model name should use default pricing"

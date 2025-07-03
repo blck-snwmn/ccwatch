@@ -484,3 +484,88 @@ class TestLoadLogsWithDuckDB:
         # Check that the session IDs from conftest.py are present
         session_ids = df["session_id"].unique()
         assert "session-001" in session_ids or "session-002" in session_ids
+
+    def test_load_logs_with_extremely_long_content(self, tmp_path, monkeypatch):
+        """Test handling of logs with very long message content (boundary case)"""
+        projects_dir = tmp_path / ".claude" / "projects" / "test"
+        projects_dir.mkdir(parents=True)
+
+        # Create log with extremely long content (1MB of text)
+        long_content = "A" * (1024 * 1024)  # 1MB of 'A'
+        jsonl_file = projects_dir / "long_content.jsonl"
+        log = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": long_content,
+                "model": "claude-3-5-sonnet-20241022",
+                "usage": {
+                    "input_tokens": 100000,
+                    "output_tokens": 50000,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+            },
+            "sessionId": "test-long-content",
+            "uuid": "test-long-uuid",
+            "parentUuid": None,
+            "cwd": "/test/project",
+            "userType": "free",
+        }
+
+        with open(jsonl_file, "w") as f:
+            f.write(json.dumps(log) + "\n")
+
+        # Mock config
+        test_config = AppConfig()
+        test_config.claude_projects_path = tmp_path / ".claude" / "projects"
+        monkeypatch.setattr("app.config", test_config)
+
+        # Should handle long content without error
+        df = load_logs_with_duckdb(cache_key="test_long_content")
+        assert len(df) == 1, "Should load log with long content"
+        assert len(df.iloc[0]["message_content"]) == len(long_content), "Long content should be preserved"
+
+    def test_load_logs_with_concurrent_sessions_boundary(self, tmp_path, monkeypatch):
+        """Test loading logs with maximum number of concurrent sessions"""
+        projects_dir = tmp_path / ".claude" / "projects" / "test"
+        projects_dir.mkdir(parents=True)
+
+        # Create logs with 100 different sessions
+        jsonl_file = projects_dir / "many_sessions.jsonl"
+        base_time = datetime.now(timezone.utc)
+
+        with open(jsonl_file, "w") as f:
+            for i in range(100):
+                log = {
+                    "timestamp": (base_time - timedelta(minutes=i)).isoformat(),
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": f"Message for session {i}",
+                        "model": "claude-3-5-sonnet-20241022",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 0,
+                        },
+                    },
+                    "sessionId": f"session-{i:03d}",  # 100 unique sessions
+                    "uuid": f"uuid-{i}",
+                    "parentUuid": None,
+                    "cwd": "/test/project",
+                    "userType": "free",
+                }
+                f.write(json.dumps(log) + "\n")
+
+        # Mock config
+        test_config = AppConfig()
+        test_config.claude_projects_path = tmp_path / ".claude" / "projects"
+        monkeypatch.setattr("app.config", test_config)
+
+        # Load and verify
+        df = load_logs_with_duckdb(cache_key="test_many_sessions")
+        assert len(df) == 100, f"Expected 100 logs but got {len(df)}"
+        assert df["session_id"].nunique() == 100, f"Expected 100 unique sessions but got {df['session_id'].nunique()}"

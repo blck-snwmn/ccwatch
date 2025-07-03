@@ -315,3 +315,42 @@ class TestCalculateCost:
         assert sonnet_cost_per_token > haiku_cost_per_token, (
             f"Sonnet (${sonnet_cost_per_token:.6f}/token) should be more expensive than Haiku (${haiku_cost_per_token:.6f}/token)"
         )
+
+    def test_cost_with_maximum_safe_integer_tokens(self):
+        """Test cost calculation with very large token counts (MAX_SAFE_INTEGER boundary)"""
+        # JavaScript's MAX_SAFE_INTEGER is 2^53 - 1
+        max_safe_int = 9007199254740991
+
+        row = pd.Series(
+            {
+                "model": "claude-3-haiku-20240307",  # Use cheapest model
+                "input_tokens": max_safe_int,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 0,
+            }
+        )
+
+        cost = calculate_cost(row)
+        # max_safe_int / 1M * $0.25 = 2,251,799,813.685248
+        expected_cost = max_safe_int / 1_000_000 * 0.25
+        assert cost == pytest.approx(expected_cost, rel=1e-10), (
+            f"Expected cost ${expected_cost:.2f} for MAX_SAFE_INTEGER tokens but got ${cost:.2f}"
+        )
+
+    def test_empty_dataframe_cost_calculation(self):
+        """Test cost calculation on empty DataFrame (boundary case)"""
+        df = pd.DataFrame(
+            columns=[
+                "model",
+                "input_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+                "output_tokens",
+            ]
+        )
+
+        # Should not raise error on empty DataFrame
+        df["cost"] = df.apply(calculate_cost, axis=1)
+        assert len(df) == 0, "Empty DataFrame should remain empty"
+        assert "cost" in df.columns, "Cost column should be added even to empty DataFrame"

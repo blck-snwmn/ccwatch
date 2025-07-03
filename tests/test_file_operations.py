@@ -213,3 +213,80 @@ class TestGetJsonlFiles:
         assert len(files) == expected_count, (
             f"Pattern '{pattern}' expected {expected_count} files but found {len(files)}"
         )
+
+    def test_single_file_in_deep_nested_directory(self, tmp_path, monkeypatch):
+        """Test finding a single file in very deep directory structure (boundary case)"""
+        projects_dir = tmp_path / ".claude" / "projects"
+
+        # Create a very deep nested structure (20 levels)
+        deep_path = projects_dir
+        for i in range(20):
+            deep_path = deep_path / f"level_{i}"
+
+        deep_path.mkdir(parents=True)
+        jsonl_file = deep_path / "deep.jsonl"
+        jsonl_file.touch()
+
+        # Mock the config
+        test_config = AppConfig()
+        test_config.claude_projects_path = projects_dir
+        monkeypatch.setattr("app.config", test_config)
+
+        # Should still find the file
+        files = get_jsonl_files()
+        assert len(files) == 1, f"Expected to find 1 file in deep directory but found {len(files)}"
+        assert files[0].endswith("deep.jsonl"), "Should find the deeply nested file"
+
+    def test_files_with_special_characters_in_names(self, tmp_path, monkeypatch):
+        """Test handling files with special characters (boundary case)"""
+        projects_dir = tmp_path / ".claude" / "projects" / "test"
+        projects_dir.mkdir(parents=True)
+
+        # Create files with special characters
+        special_names = [
+            "file with spaces.jsonl",
+            "file-with-dashes.jsonl",
+            "file_with_underscores.jsonl",
+            "file.multiple.dots.jsonl",
+            "file@special#chars.jsonl",
+        ]
+
+        for name in special_names:
+            (projects_dir / name).touch()
+
+        # Mock the config
+        test_config = AppConfig()
+        test_config.claude_projects_path = tmp_path / ".claude" / "projects"
+        monkeypatch.setattr("app.config", test_config)
+
+        # Should find all files
+        files = get_jsonl_files()
+        assert len(files) == len(special_names), (
+            f"Expected {len(special_names)} files with special characters but found {len(files)}"
+        )
+
+    def test_maximum_files_performance_boundary(self, tmp_path, monkeypatch):
+        """Test performance with maximum reasonable number of files (1000)"""
+        projects_dir = tmp_path / ".claude" / "projects"
+
+        # Create 1000 files across 100 projects
+        for i in range(100):
+            project_dir = projects_dir / f"project_{i:03d}"
+            project_dir.mkdir(parents=True)
+            for j in range(10):
+                (project_dir / f"log_{j:02d}.jsonl").touch()
+
+        # Mock the config
+        test_config = AppConfig()
+        test_config.claude_projects_path = projects_dir
+        monkeypatch.setattr("app.config", test_config)
+
+        # Measure time
+        import time
+
+        start_time = time.time()
+        files = get_jsonl_files()
+        elapsed = time.time() - start_time
+
+        assert len(files) == 1000, f"Expected 1000 files but found {len(files)}"
+        assert elapsed < 2.0, f"Finding 1000 files took {elapsed:.2f}s, expected < 2.0s"
