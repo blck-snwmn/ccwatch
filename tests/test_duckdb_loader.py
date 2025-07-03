@@ -67,20 +67,52 @@ class TestLoadLogsWithDuckDB:
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "type": "assistant",
-                "message": {"role": "assistant", "content": "Assistant message 1"},
+                "message": {
+                    "role": "assistant",
+                    "content": "Assistant message 1",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "cache_creation_input_tokens": 0,
+                        "cache_read_input_tokens": 0,
+                    },
+                },
                 "sessionId": "test-session",
+                "uuid": "test-uuid-1",
+                "parentUuid": None,
+                "cwd": "/test/project",
+                "userType": "free",
             },
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "type": "human",
                 "message": {"role": "human", "content": "Human message"},
                 "sessionId": "test-session",
+                "uuid": "test-uuid-2",
+                "parentUuid": "test-uuid-1",
+                "cwd": "/test/project",
+                "userType": "free",
             },
             {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "type": "assistant",
-                "message": {"role": "assistant", "content": "Assistant message 2"},
+                "message": {
+                    "role": "assistant",
+                    "content": "Assistant message 2",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "usage": {
+                        "input_tokens": 150,
+                        "output_tokens": 75,
+                        "cache_creation_input_tokens": 10,
+                        "cache_read_input_tokens": 20,
+                    },
+                },
                 "sessionId": "test-session",
+                "uuid": "test-uuid-3",
+                "parentUuid": "test-uuid-2",
+                "cwd": "/test/project",
+                "userType": "free",
             },
         ]
 
@@ -126,6 +158,10 @@ class TestLoadLogsWithDuckDB:
                 },
             },
             "sessionId": "test-session",
+            "uuid": "test-token-uuid",
+            "parentUuid": None,
+            "cwd": "/test/project",
+            "userType": "free",
         }
 
         with open(jsonl_file, "w") as f:
@@ -171,12 +207,17 @@ class TestLoadLogsWithDuckDB:
                 "content": "Test",
                 "model": "claude-3-5-sonnet-20241022",
                 "usage": {
-                    # Omit some token values
                     "input_tokens": 1000,
                     "output_tokens": 500,
+                    "cache_creation_input_tokens": None,  # Missing value
+                    "cache_read_input_tokens": None,  # Missing value
                 },
             },
             "sessionId": "test-session",
+            "uuid": "test-null-token-uuid",
+            "parentUuid": None,
+            "cwd": "/test/project",
+            "userType": "free",
         }
 
         with open(jsonl_file, "w") as f:
@@ -211,8 +252,22 @@ class TestLoadLogsWithDuckDB:
         log = {
             "timestamp": utc_time.isoformat(),
             "type": "assistant",
-            "message": {"role": "assistant", "content": "Test"},
+            "message": {
+                "role": "assistant",
+                "content": "Test",
+                "model": "claude-3-5-sonnet-20241022",
+                "usage": {
+                    "input_tokens": 50,
+                    "output_tokens": 25,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                },
+            },
             "sessionId": "test-session",
+            "uuid": "test-tz-uuid",
+            "parentUuid": None,
+            "cwd": "/test/project",
+            "userType": "free",
         }
 
         with open(jsonl_file, "w") as f:
@@ -369,6 +424,9 @@ class TestLoadLogsWithDuckDB:
                     },
                     "sessionId": f"session-{i // 100}",  # 10 different sessions
                     "uuid": f"uuid-{i}",
+                    "parentUuid": f"uuid-{i-1}" if i > 0 else None,
+                    "cwd": f"/test/project{i % 3}",
+                    "userType": "free" if i % 2 == 0 else "pro",
                 }
                 f.write(json.dumps(log) + "\n")
 
