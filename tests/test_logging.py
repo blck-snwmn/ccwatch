@@ -14,7 +14,7 @@ from utils.logging_config import JsonFormatter, get_logger, log_with_context, se
 class TestJsonFormatter:
     """Test JSON formatter functionality"""
 
-    def test_json_formatter_basic(self):
+    def test_formats_log_as_json(self):
         """Test basic JSON formatting"""
         formatter = JsonFormatter()
         record = logging.LogRecord(
@@ -39,7 +39,7 @@ class TestJsonFormatter:
         assert "timestamp" in data, "Timestamp field is missing from log data"
         assert "exception" not in data, "Exception field should not be present in normal log"
 
-    def test_json_formatter_with_extra(self):
+    def test_includes_extra_fields_in_json(self):
         """Test JSON formatting with extra data"""
         formatter = JsonFormatter()
         record = logging.LogRecord(
@@ -93,7 +93,7 @@ class TestJsonFormatter:
 class TestSetupLogger:
     """Test logger setup functionality"""
 
-    def test_setup_logger_default(self, tmp_path, monkeypatch):
+    def test_creates_file_logger_with_defaults(self, tmp_path, monkeypatch):
         """Test logger setup with default configuration"""
         # Change to temp directory to avoid creating logs in project
         monkeypatch.chdir(tmp_path)
@@ -125,7 +125,7 @@ class TestSetupLogger:
         assert "RotatingFileHandler" in handler_types
         assert "StreamHandler" in handler_types
 
-    def test_setup_logger_idempotent(self, tmp_path, monkeypatch):
+    def test_no_duplicate_handlers_on_repeated_calls(self, tmp_path, monkeypatch):
         """Test that setup_logger doesn't add duplicate handlers"""
         monkeypatch.chdir(tmp_path)
 
@@ -200,7 +200,7 @@ class TestLogWithContext:
             data = json.loads(line.strip())
             assert data["level"] == expected_level, f"Expected log level '{expected_level}' but got '{data['level']}'"
 
-    def test_log_with_context_no_extra(self, tmp_path, monkeypatch):
+    def test_context_logging_without_extra_fields(self, tmp_path, monkeypatch):
         """Test contextual logging without extra data"""
         monkeypatch.chdir(tmp_path)
 

@@ -57,7 +57,7 @@ class TestLoadLogsWithDuckDB:
         missing_columns = [col for col in required_columns if col not in df.columns]
         assert not missing_columns, f"Missing required columns: {missing_columns}"
 
-    def test_load_logs_filters_assistant_only(self, tmp_path, monkeypatch):
+    def test_loads_only_assistant_messages(self, tmp_path, monkeypatch):
         """Test that only assistant messages are loaded"""
         projects_dir = tmp_path / ".claude" / "projects" / "test"
         projects_dir.mkdir(parents=True)
@@ -201,7 +201,7 @@ class TestLoadLogsWithDuckDB:
             f"Expected total tokens {expected_effective + 500} but got {row['total_tokens']}"
         )
 
-    def test_load_logs_null_token_handling(self, tmp_path, monkeypatch):
+    def test_null_tokens_filled_with_zero(self, tmp_path, monkeypatch):
         """Test handling of missing/null token values"""
         projects_dir = tmp_path / ".claude" / "projects" / "test"
         projects_dir.mkdir(parents=True)
@@ -254,7 +254,7 @@ class TestLoadLogsWithDuckDB:
         )
         assert int(row["output_tokens"]) == 500, f"Expected 500 output tokens but got {row['output_tokens']}"
 
-    def test_load_logs_timezone_handling(self, tmp_path, monkeypatch):
+    def test_converts_timestamps_to_pandas_datetime(self, tmp_path, monkeypatch):
         """Test timezone conversion in DuckDB"""
         projects_dir = tmp_path / ".claude" / "projects" / "test"
         projects_dir.mkdir(parents=True)
@@ -299,7 +299,7 @@ class TestLoadLogsWithDuckDB:
         assert isinstance(timestamp, pd.Timestamp), f"Expected pandas Timestamp but got {type(timestamp)}"
         assert timestamp.tz is not None, "Timestamp should have timezone info"
 
-    def test_load_logs_project_path_extraction(self, claude_projects_with_jsonl, monkeypatch):
+    def test_extracts_project_names_from_file_paths(self, claude_projects_with_jsonl, monkeypatch):
         """Test project path extraction from file paths"""
         projects_dir, jsonl_files = claude_projects_with_jsonl
 
@@ -410,7 +410,7 @@ class TestLoadLogsWithDuckDB:
             # or it might have loaded from conftest.py fixture
             assert len(df) >= 0
 
-    def test_load_logs_performance_large_dataset(self, tmp_path, monkeypatch):
+    def test_loads_1000_entries_under_5_seconds(self, tmp_path, monkeypatch):
         """Test performance with larger dataset"""
         projects_dir = tmp_path / ".claude" / "projects" / "test"
         projects_dir.mkdir(parents=True)
@@ -465,7 +465,7 @@ class TestLoadLogsWithDuckDB:
         assert df["session_id"].nunique() == 10  # 10 different sessions
         assert df["model"].nunique() == 2  # 2 different models
 
-    def test_load_logs_session_id_type_conversion(self, claude_projects_with_jsonl, monkeypatch):
+    def test_session_ids_converted_to_strings(self, claude_projects_with_jsonl, monkeypatch):
         """Test session ID is converted to string type"""
         projects_dir, _ = claude_projects_with_jsonl
 

@@ -45,7 +45,7 @@ class TestAppConfig:
         assert "claude-3-5-sonnet-20241022" in config.model_pricing, "Sonnet model pricing not found in config"
         assert "default" in config.model_pricing, "Default model pricing not found in config"
 
-    def test_from_env_with_valid_values(self, mock_env_vars):
+    def test_load_config_from_environment_variables(self, mock_env_vars):
         """Test configuration from environment variables"""
         mock_env_vars(
             CLAUDE_PROJECTS_PATH="/custom/path",
@@ -71,7 +71,7 @@ class TestAppConfig:
         )
         assert config.cache_ttl == 7200, f"Expected cache_ttl=7200 but got {config.cache_ttl}"
 
-    def test_from_env_with_invalid_values(self, mock_env_vars):
+    def test_invalid_env_vars_fallback_to_defaults(self, mock_env_vars):
         """Test configuration with invalid environment variable values"""
         mock_env_vars(
             MAX_PROJECTS_TO_SHOW="invalid",
@@ -88,7 +88,7 @@ class TestAppConfig:
         assert config.message_preview_length == 100, "Invalid message_preview_length should fall back to default 100"
         assert config.cache_ttl == 3600, "Invalid cache_ttl should fall back to default 3600"
 
-    def test_from_env_partial_override(self, mock_env_vars):
+    def test_partial_env_override_keeps_other_defaults(self, mock_env_vars):
         """Test partial environment variable override"""
         mock_env_vars(
             CLAUDE_PROJECTS_PATH="/partial/path",
@@ -107,7 +107,7 @@ class TestAppConfig:
         assert config.message_preview_length == 100
         assert config.cache_ttl == 3600
 
-    def test_get_model_pricing_known_models(self):
+    def test_pricing_for_known_models(self):
         """Test getting pricing for known models"""
         config = AppConfig()
 
@@ -127,7 +127,7 @@ class TestAppConfig:
         assert haiku_pricing["output"] == 1.25
         assert haiku_pricing["cache_read"] == 0.03
 
-    def test_get_model_pricing_unknown_model(self):
+    def test_unknown_model_uses_default_pricing(self):
         """Test getting pricing for unknown model falls back to default"""
         config = AppConfig()
 

@@ -17,7 +17,7 @@ from config import AppConfig
 class TestGetJsonlFiles:
     """Test file search functionality"""
 
-    def test_get_jsonl_files_with_existing_files(self, claude_projects_with_jsonl, monkeypatch):
+    def test_find_all_jsonl_files_in_directory(self, claude_projects_with_jsonl, monkeypatch):
         """Test finding JSONL files in Claude projects directory"""
         projects_dir, expected_files = claude_projects_with_jsonl
 
@@ -38,7 +38,7 @@ class TestGetJsonlFiles:
 
         assert found_paths == expected_paths, "Found files do not match expected files"
 
-    def test_get_jsonl_files_sorted_by_mtime(self, claude_projects_with_jsonl, monkeypatch):
+    def test_files_sorted_newest_first(self, claude_projects_with_jsonl, monkeypatch):
         """Test that files are sorted by modification time (newest first)"""
         projects_dir, jsonl_files = claude_projects_with_jsonl
 
@@ -76,7 +76,7 @@ class TestGetJsonlFiles:
         # Should return empty list
         assert files == [], "Expected empty list for empty directory"
 
-    def test_get_jsonl_files_nonexistent_directory(self, tmp_path, monkeypatch, capsys):
+    def test_missing_directory_shows_warning(self, tmp_path, monkeypatch, capsys):
         """Test behavior when Claude projects directory doesn't exist"""
         nonexistent_dir = tmp_path / "does_not_exist"
 
@@ -158,7 +158,7 @@ class TestGetJsonlFiles:
         assert all(name.startswith("logs_") for name in file_names)
         assert "other.jsonl" not in file_names
 
-    def test_get_jsonl_files_performance(self, tmp_path, monkeypatch):
+    def test_fast_file_search_with_many_files(self, tmp_path, monkeypatch):
         """Test performance with many files"""
         projects_dir = tmp_path / ".claude" / "projects"
 
@@ -196,7 +196,7 @@ class TestGetJsonlFiles:
             ("**/nonexistent/*.jsonl", 0),  # No matches
         ],
     )
-    def test_get_jsonl_files_various_patterns(self, claude_projects_with_jsonl, monkeypatch, pattern, expected_count):
+    def test_glob_patterns_filter_correctly(self, claude_projects_with_jsonl, monkeypatch, pattern, expected_count):
         """Test different glob patterns"""
         projects_dir, _ = claude_projects_with_jsonl
 

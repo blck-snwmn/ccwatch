@@ -16,7 +16,7 @@ from config import AppConfig
 class TestCalculateCost:
     """Test cost calculation functionality"""
 
-    def test_calculate_cost_sonnet_model(self):
+    def test_cost_calculation_for_sonnet(self):
         """Test cost calculation for Sonnet model"""
 
         # Create test row with Sonnet model
@@ -42,7 +42,7 @@ class TestCalculateCost:
             f"Expected cost ${expected_cost:.2f} but got ${cost:.2f} for Sonnet model"
         )
 
-    def test_calculate_cost_opus_model(self):
+    def test_cost_calculation_for_opus(self):
         """Test cost calculation for Opus model"""
 
         row = pd.Series(
@@ -67,7 +67,7 @@ class TestCalculateCost:
             f"Expected cost ${expected_cost:.2f} but got ${cost:.2f} for Opus model"
         )
 
-    def test_calculate_cost_haiku_model(self):
+    def test_cost_calculation_for_haiku(self):
         """Test cost calculation for Haiku model"""
 
         row = pd.Series(
@@ -92,7 +92,7 @@ class TestCalculateCost:
             f"Expected cost ${expected_cost:.2f} but got ${cost:.2f} for Haiku model"
         )
 
-    def test_calculate_cost_unknown_model(self):
+    def test_unknown_model_uses_default_pricing(self):
         """Test cost calculation for unknown model uses default pricing"""
 
         row = pd.Series(
@@ -133,7 +133,7 @@ class TestCalculateCost:
         cost = calculate_cost(row)
         assert cost == 0.0, f"Expected zero cost for zero tokens but got ${cost:.2f}"
 
-    def test_calculate_cost_only_input_tokens(self):
+    def test_cost_with_input_tokens_only(self):
         """Test cost calculation with only input tokens"""
 
         row = pd.Series(
@@ -151,7 +151,7 @@ class TestCalculateCost:
         # Only input cost: 1M * $3.00 = $3.00
         assert cost == pytest.approx(3.00, rel=1e-5), f"Expected cost $3.00 for input tokens only but got ${cost:.2f}"
 
-    def test_calculate_cost_only_cache_tokens(self):
+    def test_cost_with_cache_tokens_only(self):
         """Test cost calculation with only cache tokens"""
 
         row = pd.Series(
@@ -185,7 +185,7 @@ class TestCalculateCost:
             ({"input": 0, "cache_creation": 0, "cache_read": 0, "output": 100000}, 1.5),
         ],
     )
-    def test_calculate_cost_various_amounts(self, tokens, expected_cost):
+    def test_cost_with_various_token_amounts(self, tokens, expected_cost):
         """Test cost calculation with various token amounts"""
 
         row = pd.Series(
@@ -203,7 +203,7 @@ class TestCalculateCost:
             f"Expected cost ${expected_cost:.6f} but got ${cost:.6f} for token amounts {tokens}"
         )
 
-    def test_calculate_cost_all_models(self):
+    def test_cost_calculation_for_all_configured_models(self):
         """Test cost calculation works for all configured models"""
         config = AppConfig()
 
@@ -249,7 +249,7 @@ class TestCalculateCost:
         assert cost > 0, f"Expected positive cost for minimal tokens but got ${cost:.8f}"
         assert cost < 0.001, f"Expected cost < $0.001 for minimal tokens but got ${cost:.8f}"
 
-    def test_cost_calculation_with_dataframe(self):
+    def test_batch_cost_calculation_on_dataframe(self):
         """Test cost calculation on entire DataFrame"""
         # Create test DataFrame
         data = [
