@@ -18,7 +18,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_sonnet_model(self):
         """Test cost calculation for Sonnet model"""
-        config = AppConfig()
 
         # Create test row with Sonnet model
         row = pd.Series(
@@ -43,7 +42,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_opus_model(self):
         """Test cost calculation for Opus model"""
-        config = AppConfig()
 
         row = pd.Series(
             {
@@ -67,7 +65,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_haiku_model(self):
         """Test cost calculation for Haiku model"""
-        config = AppConfig()
 
         row = pd.Series(
             {
@@ -91,7 +88,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_unknown_model(self):
         """Test cost calculation for unknown model uses default pricing"""
-        config = AppConfig()
 
         row = pd.Series(
             {
@@ -115,7 +111,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_zero_tokens(self):
         """Test cost calculation with zero tokens"""
-        config = AppConfig()
 
         row = pd.Series(
             {
@@ -132,7 +127,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_only_input_tokens(self):
         """Test cost calculation with only input tokens"""
-        config = AppConfig()
 
         row = pd.Series(
             {
@@ -151,7 +145,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_only_cache_tokens(self):
         """Test cost calculation with only cache tokens"""
-        config = AppConfig()
 
         row = pd.Series(
             {
@@ -172,7 +165,7 @@ class TestCalculateCost:
         assert cost == pytest.approx(expected_cost, rel=1e-5)
 
     @pytest.mark.parametrize(
-        "tokens,expected_cost",
+        ("tokens", "expected_cost"),
         [
             # Small token counts
             ({"input": 100, "cache_creation": 50, "cache_read": 20, "output": 30}, 0.000906),
@@ -184,7 +177,6 @@ class TestCalculateCost:
     )
     def test_calculate_cost_various_amounts(self, tokens, expected_cost):
         """Test cost calculation with various token amounts"""
-        config = AppConfig()
 
         row = pd.Series(
             {
@@ -211,7 +203,7 @@ class TestCalculateCost:
             "output_tokens": 30000,
         }
 
-        for model_name in config.model_pricing.keys():
+        for model_name in config.model_pricing:
             if model_name == "default":
                 continue
 
@@ -223,7 +215,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_precision(self):
         """Test cost calculation maintains appropriate precision"""
-        config = AppConfig()
 
         # Test with very small token counts
         row = pd.Series(

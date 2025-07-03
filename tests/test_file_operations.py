@@ -188,7 +188,7 @@ class TestGetJsonlFiles:
         assert elapsed < 1.0  # Should complete in less than 1 second
 
     @pytest.mark.parametrize(
-        "pattern,expected_count",
+        ("pattern", "expected_count"),
         [
             ("**/*.jsonl", 2),  # All JSONL files
             ("**/project1/*.jsonl", 1),  # Only in project1

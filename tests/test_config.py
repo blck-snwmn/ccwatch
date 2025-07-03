@@ -137,7 +137,7 @@ class TestAppConfig:
                 assert value > 0, f"{field} for {model_name} should be positive"
 
     @pytest.mark.parametrize(
-        "model,expected_input,expected_output,expected_cache",
+        ("model", "expected_input", "expected_output", "expected_cache"),
         [
             ("claude-3-5-sonnet-20241022", 3.00, 15.00, 0.30),
             ("claude-3-5-sonnet-20240620", 3.00, 15.00, 0.30),

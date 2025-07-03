@@ -711,27 +711,8 @@ def show_project_insights(df):
         st.plotly_chart(fig_recent, use_container_width=True)
 
 
-def main():
-    st.title("🔍 ccwatch - ClaudeCode Monitor")
-    st.markdown("Monitor and visualize ClaudeCode logs")
-
-    # アプリケーション起動ログ
-    log_with_context(logger, "INFO", "ccwatch application started", claude_path=str(config.claude_projects_path))
-
-    # Auto-refresh every 5 minutes (in milliseconds)
-    count = st_autorefresh(interval=config.check_interval * 1000, limit=None, key="autorefresh")
-
-    # Initialize session state
-    if "update_count" not in st.session_state:
-        st.session_state["update_count"] = 0
-
-    if count > 0:
-        st.session_state["update_count"] = count
-
-    # Get file list
-    jsonl_files = get_jsonl_files()
-
-    # Sidebar
+def setup_sidebar(jsonl_files):
+    """Set up the sidebar with monitoring status and controls"""
     with st.sidebar:
         st.header("🔍 ccwatch")
         st.caption("ClaudeCode Monitor")
@@ -766,6 +747,60 @@ def main():
                     mtime = datetime.fromtimestamp(os.path.getmtime(f))
                     st.caption(f"- {file_name}")
                     st.caption(f"  Updated: {mtime.strftime('%H:%M:%S')}")
+
+
+def display_main_content(df):
+    """Display all main content sections"""
+    # Display metrics
+    show_metrics(df)
+
+    # Overall statistics
+    show_overall_graphs(df)
+
+    # Session analysis
+    show_session_analysis(df)
+
+    # Model analysis
+    show_model_analysis(df)
+
+    # Token and cost analysis
+    show_token_and_cost_analysis(df)
+
+    # Heatmap
+    show_heatmap(df)
+
+    # Project insights
+    show_project_insights(df)
+
+    # Recent logs
+    show_recent_logs(df)
+
+    # Footer information
+    st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+
+def main():
+    st.title("🔍 ccwatch - ClaudeCode Monitor")
+    st.markdown("Monitor and visualize ClaudeCode logs")
+
+    # アプリケーション起動ログ
+    log_with_context(logger, "INFO", "ccwatch application started", claude_path=str(config.claude_projects_path))
+
+    # Auto-refresh every 5 minutes (in milliseconds)
+    count = st_autorefresh(interval=config.check_interval * 1000, limit=None, key="autorefresh")
+
+    # Initialize session state
+    if "update_count" not in st.session_state:
+        st.session_state["update_count"] = 0
+
+    if count > 0:
+        st.session_state["update_count"] = count
+
+    # Get file list
+    jsonl_files = get_jsonl_files()
+
+    # Set up sidebar
+    setup_sidebar(jsonl_files)
 
     # Main content
     if not jsonl_files:

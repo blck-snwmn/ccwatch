@@ -130,7 +130,7 @@ class TestLoadLogsWithDuckDB:
 
         # Check if load was successful
         assert df is not None, "Failed to load logs from DuckDB"
-        
+
         # Should only have assistant messages
         assert len(df) == 2  # Only 2 assistant messages
         assert all(df["log_type"] == "assistant")
@@ -177,7 +177,7 @@ class TestLoadLogsWithDuckDB:
 
         # Should only have our test log
         assert len(df) == 1, f"Expected 1 log but got {len(df)}"
-        
+
         # Check token calculations
         row = df.iloc[0]
         assert int(row["input_tokens"]) == 1000
@@ -233,7 +233,7 @@ class TestLoadLogsWithDuckDB:
 
         # Should only have our test log
         assert len(df) == 1, f"Expected 1 log but got {len(df)}"
-        
+
         # Check null values are filled with 0
         row = df.iloc[0]
         assert int(row["input_tokens"]) == 1000
@@ -424,7 +424,7 @@ class TestLoadLogsWithDuckDB:
                     },
                     "sessionId": f"session-{i // 100}",  # 10 different sessions
                     "uuid": f"uuid-{i}",
-                    "parentUuid": f"uuid-{i-1}" if i > 0 else None,
+                    "parentUuid": f"uuid-{i - 1}" if i > 0 else None,
                     "cwd": f"/test/project{i % 3}",
                     "userType": "free" if i % 2 == 0 else "pro",
                 }

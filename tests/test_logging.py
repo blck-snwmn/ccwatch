@@ -194,7 +194,7 @@ class TestLogWithContext:
 
         # Verify each log entry
         levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
-        for i, (line, expected_level) in enumerate(zip(log_lines, levels)):
+        for _i, (line, expected_level) in enumerate(zip(log_lines, levels)):
             data = json.loads(line.strip())
             assert data["level"] == expected_level
 

@@ -76,11 +76,16 @@ ignore = [
     "E501",   # 行の長さ (line-lengthで制御)
     "PD901",  # pandas df変数名
     "PLR0913", # 引数が多すぎる
+    "PLR0915", # ステートメントが多すぎる
 ]
 
 # ディレクトリごとの設定
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101"]  # テストでのassert使用を許可
+"tests/*" = [
+    "S101",    # テストでのassert使用を許可
+    "PLR2004", # マジックナンバーの使用を許可
+    "PLC0415", # import文の位置（テストでは必要に応じて）
+]
 
 [tool.ruff.lint.isort]
 # import文のグループ化設定
