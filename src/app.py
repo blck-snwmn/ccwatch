@@ -1,4 +1,5 @@
 import glob
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -34,9 +35,64 @@ def get_jsonl_files():
     return sorted(files, key=os.path.getmtime, reverse=True)
 
 
+def extract_tool_uses_from_assistant_df(df):
+    """Extract tool usage information from assistant messages DataFrame"""
+    tool_uses = []
+
+    # Log tool extraction start (DEBUG level for production)
+    log_with_context(logger, "DEBUG", "Starting tool extraction", total_rows=len(df))
+
+    for idx, row in df.iterrows():
+        # Debug logging for first row only in development
+        if idx == 0 and logger.isEnabledFor(logger.DEBUG):
+            log_with_context(
+                logger,
+                "DEBUG",
+                "First row message type",
+                msg_type=type(row.get("message")).__name__,
+                has_message="message" in row,
+            )
+
+        if row.get("message") and isinstance(row["message"], dict):
+            content = row["message"].get("content", [])
+
+            # If content is a string, parse it as JSON
+            if isinstance(content, str):
+                try:
+                    content = json.loads(content)
+                except json.JSONDecodeError:
+                    continue
+
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "tool_use":
+                        tool_uses.append(
+                            {
+                                "source_file": row["source_file"],
+                                "timestamp": row["timestamp"],
+                                "session_id": row["session_id"],
+                                "uuid": row["uuid"],
+                                "cwd": row.get("cwd", ""),
+                                "project_path": row["project_path"],
+                                "tool_name": item.get("name", "Unknown"),
+                                "tool_id": item.get("id", ""),
+                            }
+                        )
+
+    # Log tool extraction completion
+    log_with_context(logger, "DEBUG", "Tool extraction completed", tools_found=len(tool_uses))
+
+    if tool_uses:
+        tool_df = pd.DataFrame(tool_uses)
+        tool_df["timestamp"] = pd.to_datetime(tool_df["timestamp"])
+        return tool_df
+    else:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=config.cache_ttl)
-def load_logs_with_duckdb(cache_key):
-    """Load JSONL files directly using DuckDB
+def load_all_logs_with_duckdb(cache_key):
+    """Load all JSONL files once and extract different data types
 
     Args:
         cache_key: Cache control key (update counter)
@@ -53,73 +109,151 @@ def load_logs_with_duckdb(cache_key):
     # Use glob pattern to read all JSONL files at once
     glob_pattern = str(config.claude_projects_path / config.jsonl_pattern)
 
-    query = """
-    SELECT 
-        filename as source_file,
-        timezone(current_setting('TimeZone'), timestamp::TIMESTAMP) as timestamp,
-        type as log_type,
-        TRY_CAST(message.role AS VARCHAR) as role,
-        TRY_CAST(message.content AS VARCHAR) as message_content,
-        TRY_CAST(json_extract_string(to_json(message), '$.model') AS VARCHAR) as model,
-        sessionId as session_id,
-        uuid,
-        parentUuid as parent_uuid,
-        cwd,
-        userType as user_type,
-        TRY_CAST(message.usage.input_tokens AS BIGINT) as input_tokens,
-        TRY_CAST(message.usage.cache_creation_input_tokens AS BIGINT) as cache_creation_input_tokens,
-        TRY_CAST(message.usage.cache_read_input_tokens AS BIGINT) as cache_read_input_tokens,
-        TRY_CAST(message.usage.output_tokens AS BIGINT) as output_tokens
-    FROM read_json_auto(?, format='newline_delimited', filename=true)
-    WHERE type = 'assistant'
-    """
-
-    # DEBUG: Executing DuckDB query
-    log_with_context(logger, "DEBUG", "Executing DuckDB query", glob_pattern=glob_pattern)
+    # Create a temporary table with all logs
+    log_with_context(logger, "INFO", "Loading all JSONL files into DuckDB", glob_pattern=glob_pattern)
 
     try:
-        df = conn.execute(query, [glob_pattern]).df()
-        # Timestamp is already in local timezone from DuckDB
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df["project_path"] = df["source_file"].apply(lambda x: Path(x).parent.name)
-        df["session_id"] = df["session_id"].astype(str)
-
-        # Fill NaN values for token columns with 0
-        token_columns = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]
-        for col in token_columns:
-            if col in df.columns:
-                df[col] = df[col].fillna(0).astype(int)
-
-        # Calculate total effective input tokens (cache_read tokens count as 10% of regular tokens)
-        df["effective_input_tokens"] = (
-            df["input_tokens"] + df["cache_creation_input_tokens"] + (df["cache_read_input_tokens"] * 0.1)
+        # Load all data into a temporary table
+        conn.execute(
+            """
+            CREATE TABLE all_logs AS 
+            SELECT 
+                filename,
+                timestamp,
+                type,
+                sessionId,
+                uuid,
+                parentUuid,
+                cwd,
+                userType,
+                message,
+                isApiErrorMessage,
+                toolUseResult,
+                leafUuid,
+                requestId,
+                summary,
+                isMeta,
+                isSidechain,
+                isCompactSummary
+            FROM read_json_auto(?, format='newline_delimited', filename=true)
+        """,
+            [glob_pattern],
         )
-        df["total_tokens"] = df["effective_input_tokens"] + df["output_tokens"]
 
-        # DEBUG: Query completed
+        # Get total row count
+        total_rows = conn.execute("SELECT COUNT(*) FROM all_logs").fetchone()[0]
+        log_with_context(logger, "INFO", "Total logs loaded", total_rows=total_rows)
+
+        # Extract assistant messages
+        assistant_query = """
+        SELECT 
+            filename as source_file,
+            timezone(current_setting('TimeZone'), timestamp::TIMESTAMP) as timestamp,
+            type as log_type,
+            TRY_CAST(message.role AS VARCHAR) as role,
+            TRY_CAST(message.content AS VARCHAR) as message_content,
+            TRY_CAST(json_extract_string(to_json(message), '$.model') AS VARCHAR) as model,
+            sessionId as session_id,
+            uuid,
+            parentUuid as parent_uuid,
+            cwd,
+            userType as user_type,
+            TRY_CAST(message.usage.input_tokens AS BIGINT) as input_tokens,
+            TRY_CAST(message.usage.cache_creation_input_tokens AS BIGINT) as cache_creation_input_tokens,
+            TRY_CAST(message.usage.cache_read_input_tokens AS BIGINT) as cache_read_input_tokens,
+            TRY_CAST(message.usage.output_tokens AS BIGINT) as output_tokens,
+            message  -- Include the full message object for tool extraction
+        FROM all_logs
+        WHERE type = 'assistant'
+        """
+
+        assistant_df = conn.execute(assistant_query).df()
+
+        if not assistant_df.empty:
+            # Process assistant data
+            assistant_df["timestamp"] = pd.to_datetime(assistant_df["timestamp"])
+            assistant_df["project_path"] = assistant_df["source_file"].apply(lambda x: Path(x).parent.name)
+            assistant_df["session_id"] = assistant_df["session_id"].astype(str)
+
+            # Fill NaN values for token columns with 0
+            token_columns = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]
+            for col in token_columns:
+                if col in assistant_df.columns:
+                    assistant_df[col] = assistant_df[col].fillna(0).astype(int)
+
+            # Calculate total effective input tokens
+            assistant_df["effective_input_tokens"] = (
+                assistant_df["input_tokens"]
+                + assistant_df["cache_creation_input_tokens"]
+                + (assistant_df["cache_read_input_tokens"] * 0.1)
+            )
+            assistant_df["total_tokens"] = assistant_df["effective_input_tokens"] + assistant_df["output_tokens"]
+
+        # Extract system/error messages
+        system_query = """
+        SELECT 
+            filename as source_file,
+            timezone(current_setting('TimeZone'), timestamp::TIMESTAMP) as timestamp,
+            type as log_type,
+            CASE 
+                WHEN TRY_CAST(isApiErrorMessage AS BOOLEAN) = true THEN 'error'
+                WHEN type = 'system' THEN 'system'
+                ELSE 'info'
+            END as level,
+            COALESCE(
+                TRY_CAST(message.content AS VARCHAR),
+                TRY_CAST(summary AS VARCHAR),
+                'System message'
+            ) as content,
+            TRY_CAST(isApiErrorMessage AS BOOLEAN) as is_api_error,
+            sessionId as session_id,
+            uuid,
+            parentUuid as parent_uuid,
+            cwd,
+            userType as user_type
+        FROM all_logs
+        WHERE type = 'system' 
+           OR TRY_CAST(isApiErrorMessage AS BOOLEAN) = true
+           OR TRY_CAST(isMeta AS BOOLEAN) = true
+        """
+
+        system_df = conn.execute(system_query).df()
+
+        if not system_df.empty:
+            system_df["timestamp"] = pd.to_datetime(system_df["timestamp"])
+            system_df["project_path"] = system_df["source_file"].apply(lambda x: Path(x).parent.name)
+            system_df["session_id"] = system_df["session_id"].astype(str)
+
+        # Extract tool usage from assistant messages BEFORE removing the message column
+        tool_df = extract_tool_uses_from_assistant_df(assistant_df)
+
+        # Remove the message column from assistant_df to save memory
+        if "message" in assistant_df.columns:
+            assistant_df = assistant_df.drop(columns=["message"])
+
+        # Log completion
         duration = (datetime.now() - start_time).total_seconds()
         log_with_context(
             logger,
-            "DEBUG",
-            "DuckDB query completed successfully",
+            "INFO",
+            "All data loaded successfully",
             duration_seconds=duration,
-            rows_loaded=len(df),
-            unique_files=df["source_file"].nunique(),
+            assistant_rows=len(assistant_df),
+            system_rows=len(system_df),
+            tool_rows=len(tool_df),
         )
 
-        return df
+        return assistant_df, system_df, tool_df
+
     except Exception as e:
-        st.error(f"Error loading JSONL files: {e}")
         log_with_context(
             logger,
             "ERROR",
-            "Failed to load JSONL files",
+            "Failed to load logs",
             error_type=type(e).__name__,
             error_message=str(e),
-            path=str(config.claude_projects_path),
-            glob_pattern=glob_pattern,
         )
-        return None
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     finally:
         conn.close()
 
@@ -701,6 +835,87 @@ def show_heatmap(df):
         )
 
 
+def show_error_warning_monitoring(system_df):
+    """Display error and warning monitoring section"""
+    st.header("🚨 Error & Warning Monitoring")
+    st.caption("System messages, API errors, and model limit warnings")
+
+    if system_df.empty:
+        st.info("No errors or warnings detected in the current data period")
+        return
+
+    # Error/Warning metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        total_errors = len(system_df[system_df["is_api_error"]])
+        st.metric("API Errors", total_errors, help="Total number of API error messages")
+    with col2:
+        warning_count = len(system_df[system_df["level"] == "warning"])
+        st.metric("Warnings", warning_count, help="Total number of warning messages")
+    with col3:
+        unique_sessions = system_df["session_id"].nunique()
+        st.metric("Affected Sessions", unique_sessions, help="Number of sessions with errors or warnings")
+    with col4:
+        # Check for model limit warnings
+        model_limit_warnings = system_df[system_df["content"].str.contains("limit reached", case=False, na=False)]
+        st.metric("Model Limit Warnings", len(model_limit_warnings), help="Number of model limit reached warnings")
+
+    # Timeline of errors and warnings
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Error timeline
+        error_timeline = (
+            system_df[system_df["is_api_error"]]
+            .groupby(pd.Grouper(key="timestamp", freq="1h"))
+            .size()
+            .reset_index(name="count")
+        )
+
+        if not error_timeline.empty:
+            fig_error_timeline = px.line(
+                error_timeline, x="timestamp", y="count", title="API Errors Over Time", height=300, markers=True
+            )
+            fig_error_timeline.update_traces(hovertemplate="Time: %{x|%Y-%m-%d %H:%M}<br>Errors: %{y}<extra></extra>")
+            st.plotly_chart(fig_error_timeline, use_container_width=True)
+        else:
+            st.info("No API errors to display")
+
+    with col2:
+        # Warning types distribution
+        if "level" in system_df.columns:
+            level_counts = system_df["level"].value_counts()
+            if not level_counts.empty:
+                fig_levels = px.pie(
+                    values=level_counts.values, names=level_counts.index, title="Message Types Distribution", height=300
+                )
+                fig_levels.update_traces(
+                    hovertemplate="Type: %{label}<br>Count: %{value}<br>Percentage: %{percent}<extra></extra>"
+                )
+                st.plotly_chart(fig_levels, use_container_width=True)
+
+    # Recent errors and warnings table
+    st.subheader("📋 Recent Errors & Warnings")
+    recent_system = system_df.nlargest(20, "timestamp")[["timestamp", "level", "content", "project_path", "session_id"]]
+
+    # Truncate long messages
+    recent_system["content"] = recent_system["content"].apply(
+        lambda x: str(x)[: config.message_preview_length] + "..."
+        if x and len(str(x)) > config.message_preview_length
+        else x
+    )
+
+    # Apply color coding based on level
+    def highlight_level(row):
+        if row["level"] == "error" or row.get("is_api_error", False):
+            return ["background-color: #ffcccc"] * len(row)
+        elif row["level"] == "warning":
+            return ["background-color: #fff3cd"] * len(row)
+        return [""] * len(row)
+
+    st.dataframe(recent_system.style.apply(highlight_level, axis=1), use_container_width=True, height=400)
+
+
 def show_recent_logs(df):
     """Display recent logs"""
     st.header("📋 Recent AI Responses")
@@ -715,6 +930,117 @@ def show_recent_logs(df):
     )
 
     st.dataframe(recent_logs, use_container_width=True, height=400)
+
+
+def show_tool_usage_analysis(tool_df):
+    """Display tool usage analysis"""
+    st.header("🛠️ Tool Usage Analysis")
+    st.caption("Analysis of tool usage patterns and frequency")
+
+    if tool_df.empty:
+        st.info("No tool usage data available in the current data period")
+        return
+
+    # Tool usage metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        total_tool_uses = len(tool_df)
+        st.metric("Total Tool Uses", total_tool_uses, help="Total number of tool invocations")
+    with col2:
+        unique_tools = tool_df["tool_name"].nunique()
+        st.metric("Unique Tools", unique_tools, help="Number of different tools used")
+    with col3:
+        sessions_with_tools = tool_df["session_id"].nunique()
+        st.metric("Sessions with Tools", sessions_with_tools, help="Number of sessions that used tools")
+    with col4:
+        # Count WebSearch tool uses
+        web_searches = len(tool_df[tool_df["tool_name"] == "WebSearch"]) if "tool_name" in tool_df.columns else 0
+        st.metric("Web Searches", web_searches, help="Total number of WebSearch tool uses")
+
+    # Tool usage distribution
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Top tools by usage
+        tool_counts = tool_df["tool_name"].value_counts().head(10)
+        if not tool_counts.empty:
+            fig_tools = px.bar(
+                x=tool_counts.values,
+                y=tool_counts.index,
+                orientation="h",
+                title="Top 10 Most Used Tools",
+                labels={"x": "Usage Count", "y": "Tool Name"},
+                height=400,
+            )
+            fig_tools.update_traces(hovertemplate="Tool: %{y}<br>Uses: %{x}<extra></extra>")
+            fig_tools.update_yaxes(autorange="reversed")
+            st.plotly_chart(fig_tools, use_container_width=True)
+
+    with col2:
+        # Tool usage over time
+        daily_tools = (
+            tool_df.groupby([pd.Grouper(key="timestamp", freq="D"), "tool_name"]).size().reset_index(name="count")
+        )
+        # Get top 5 tools for cleaner visualization
+        top_tools = tool_df["tool_name"].value_counts().head(5).index.tolist()
+        daily_tools_filtered = daily_tools[daily_tools["tool_name"].isin(top_tools)]
+
+        if not daily_tools_filtered.empty:
+            fig_timeline = px.line(
+                daily_tools_filtered,
+                x="timestamp",
+                y="count",
+                color="tool_name",
+                title="Daily Tool Usage (Top 5 Tools)",
+                height=400,
+            )
+            fig_timeline.update_traces(hovertemplate="Date: %{x|%Y-%m-%d}<br>Uses: %{y}<extra></extra>")
+            st.plotly_chart(fig_timeline, use_container_width=True)
+
+    # Tool usage by project
+    st.subheader("Tool Usage by Project")
+    project_tool_usage = tool_df.groupby(["project_path", "tool_name"]).size().reset_index(name="count")
+
+    # Get top projects by tool usage
+    top_projects_by_tools = tool_df["project_path"].value_counts().head(10).index.tolist()
+    project_tool_filtered = project_tool_usage[project_tool_usage["project_path"].isin(top_projects_by_tools)]
+
+    if not project_tool_filtered.empty:
+        # Create pivot table for heatmap
+        pivot_data = project_tool_filtered.pivot_table(
+            index="project_path", columns="tool_name", values="count", fill_value=0
+        )
+
+        fig_heatmap = go.Figure(
+            data=go.Heatmap(
+                z=pivot_data.values,
+                x=pivot_data.columns,
+                y=pivot_data.index,
+                colorscale="Blues",
+                hovertemplate="Project: %{y}<br>Tool: %{x}<br>Uses: %{z}<extra></extra>",
+            )
+        )
+
+        fig_heatmap.update_layout(
+            title="Tool Usage Heatmap (Top 10 Projects)", xaxis_title="Tool Name", yaxis_title="Project", height=400
+        )
+
+        st.plotly_chart(fig_heatmap, use_container_width=True)
+
+    # TODO tool analysis if available
+    todo_tools = tool_df[tool_df["tool_name"].str.contains("todo", case=False, na=False)]
+    if not todo_tools.empty:
+        st.subheader("📝 TODO Tool Usage")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            todo_count = len(todo_tools)
+            st.metric("TODO Tool Uses", todo_count)
+        with col2:
+            todo_sessions = todo_tools["session_id"].nunique()
+            st.metric("Sessions with TODO", todo_sessions)
+        with col3:
+            todo_projects = todo_tools["project_path"].nunique()
+            st.metric("Projects with TODO", todo_projects)
 
 
 def show_project_insights(df):
@@ -873,7 +1199,8 @@ def main():
     # データ読み込み開始ログ
     log_with_context(logger, "INFO", "Starting data load", update_count=cache_key, files_found=len(jsonl_files))
 
-    df = load_logs_with_duckdb(cache_key)
+    # Load all data at once using the consolidated function
+    df, system_df, tool_df = load_all_logs_with_duckdb(cache_key)
 
     if df is not None and not df.empty:
         # データ読み込み成功ログ
@@ -885,17 +1212,24 @@ def main():
             sessions=df["session_id"].nunique(),
             projects=df["project_path"].nunique(),
         )
+
         # Display metrics
         show_metrics(df)
 
         # Overall statistics
         show_overall_graphs(df)
 
+        # Error & Warning monitoring
+        show_error_warning_monitoring(system_df)
+
         # Session analysis
         show_session_analysis(df)
 
         # Model analysis
         show_model_analysis(df)
+
+        # Tool usage analysis
+        show_tool_usage_analysis(tool_df)
 
         # Token and cost analysis
         show_token_and_cost_analysis(df)
