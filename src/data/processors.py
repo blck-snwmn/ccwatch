@@ -21,19 +21,26 @@ logger = get_logger()
 config = AppConfig.from_env()
 
 
-def get_jsonl_files() -> list[str]:
+def get_jsonl_files(app_config: Optional[AppConfig] = None) -> list[str]:
     """Search for ClaudeCode project log files.
+
+    Args:
+        app_config: Optional configuration object. If not provided, uses global config.
 
     Returns:
         List of paths to JSONL files, sorted by modification time (newest first)
     """
-    if not config.claude_projects_path.exists():
+    # Use provided config or fall back to global config
+    if app_config is None:
+        app_config = config
+
+    if not app_config.claude_projects_path.exists():
         log_with_context(
-            logger, "WARNING", "ClaudeCode projects directory not found", path=str(config.claude_projects_path)
+            logger, "WARNING", "ClaudeCode projects directory not found", path=str(app_config.claude_projects_path)
         )
         return []
 
-    pattern = str(config.claude_projects_path / config.jsonl_pattern)
+    pattern = str(app_config.claude_projects_path / app_config.jsonl_pattern)
     files = glob.glob(pattern, recursive=True)
 
     log_with_context(logger, "DEBUG", "Found JSONL files", count=len(files), pattern=pattern)

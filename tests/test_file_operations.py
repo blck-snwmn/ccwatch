@@ -10,24 +10,23 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from data.processors import get_jsonl_files
 from config import AppConfig
+from data.processors import get_jsonl_files
 
 
 class TestGetJsonlFiles:
     """Test file search functionality"""
 
-    def test_find_all_jsonl_files_in_directory(self, claude_projects_with_jsonl, monkeypatch):
+    def test_find_all_jsonl_files_in_directory(self, claude_projects_with_jsonl):
         """Test finding JSONL files in Claude projects directory"""
         projects_dir, expected_files = claude_projects_with_jsonl
 
-        # Mock the config to use our test directory
+        # Create test config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("data.processors.config", test_config)
 
-        # Get files
-        files = get_jsonl_files()
+        # Get files using dependency injection
+        files = get_jsonl_files(test_config)
 
         # Should find all JSONL files
         assert len(files) == len(expected_files), f"Expected {len(expected_files)} files but found {len(files)}"
@@ -38,7 +37,7 @@ class TestGetJsonlFiles:
 
         assert found_paths == expected_paths, "Found files do not match expected files"
 
-    def test_files_sorted_newest_first(self, claude_projects_with_jsonl, monkeypatch):
+    def test_files_sorted_newest_first(self, claude_projects_with_jsonl):
         """Test that files are sorted by modification time (newest first)"""
         projects_dir, jsonl_files = claude_projects_with_jsonl
 
@@ -51,16 +50,14 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("data.processors.config", test_config)
-
-        # Get files
-        files = get_jsonl_files()
+        # Get files using dependency injection
+        files = get_jsonl_files(test_config)
 
         # Verify they're sorted by modification time (newest first)
         mtimes = [os.path.getmtime(f) for f in files]
         assert mtimes == sorted(mtimes, reverse=True), "Files are not sorted by modification time (newest first)"
 
-    def test_get_jsonl_files_empty_directory(self, tmp_path, monkeypatch):
+    def test_get_jsonl_files_empty_directory(self, tmp_path):
         """Test behavior with empty Claude projects directory"""
         empty_dir = tmp_path / ".claude" / "projects"
         empty_dir.mkdir(parents=True)
@@ -68,37 +65,34 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = empty_dir
-        monkeypatch.setattr("data.processors.config", test_config)
-
-        # Get files
-        files = get_jsonl_files()
+        # Get files using dependency injection
+        files = get_jsonl_files(test_config)
 
         # Should return empty list
         assert files == [], "Expected empty list for empty directory"
 
-    def test_missing_directory_shows_warning(self, tmp_path, monkeypatch, caplog):
+    def test_missing_directory_shows_warning(self, tmp_path, caplog):
         """Test behavior when Claude projects directory doesn't exist"""
         nonexistent_dir = tmp_path / "does_not_exist"
 
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = nonexistent_dir
-        monkeypatch.setattr("data.processors.config", test_config)
-
-        # Get files
-        files = get_jsonl_files()
+        # Get files using dependency injection
+        files = get_jsonl_files(test_config)
 
         # Should return empty list and log warning
         assert files == [], "Expected empty list for non-existent directory"
-        
+
         # Check that warning was logged
-        assert any("ClaudeCode projects directory not found" in record.message for record in caplog.records), \
+        assert any("ClaudeCode projects directory not found" in record.message for record in caplog.records), (
             "Expected warning log message about missing directory"
-        
+        )
+
         # The log message is actually in the extra data, not in the message itself
         # So we just need to verify the warning was logged - the path is in structured logging data
 
-    def test_get_jsonl_files_with_subdirectories(self, tmp_path, monkeypatch):
+    def test_get_jsonl_files_with_subdirectories(self, tmp_path):
         """Test finding JSONL files in nested subdirectories"""
         projects_dir = tmp_path / ".claude" / "projects"
         projects_dir.mkdir(parents=True)
@@ -120,10 +114,8 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("data.processors.config", test_config)
-
-        # Get files
-        files = get_jsonl_files()
+        # Get files using dependency injection
+        files = get_jsonl_files(test_config)
 
         # Should find only JSONL files
         assert len(files) == 3, f"Expected 3 JSONL files in nested directories but found {len(files)}"
@@ -132,7 +124,7 @@ class TestGetJsonlFiles:
         file_names = {Path(f).name for f in files}
         assert file_names == {"logs.jsonl", "data.jsonl", "file.jsonl"}, f"Unexpected file names: {file_names}"
 
-    def test_get_jsonl_files_with_custom_pattern(self, claude_projects_with_jsonl, monkeypatch):
+    def test_get_jsonl_files_with_custom_pattern(self, claude_projects_with_jsonl):
         """Test using custom JSONL pattern"""
         projects_dir, jsonl_files = claude_projects_with_jsonl
 
@@ -144,17 +136,15 @@ class TestGetJsonlFiles:
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
         test_config.jsonl_pattern = "**/logs_*.jsonl"  # Only match files starting with logs_
-        monkeypatch.setattr("data.processors.config", test_config)
-
-        # Get files
-        files = get_jsonl_files()
+        # Get files using dependency injection
+        files = get_jsonl_files(test_config)
 
         # Should only find files matching the pattern
         file_names = {Path(f).name for f in files}
         assert all(name.startswith("logs_") for name in file_names)
         assert "other.jsonl" not in file_names
 
-    def test_fast_file_search_with_many_files(self, tmp_path, monkeypatch):
+    def test_fast_file_search_with_many_files(self, tmp_path):
         """Test performance with many files"""
         projects_dir = tmp_path / ".claude" / "projects"
 
@@ -167,16 +157,15 @@ class TestGetJsonlFiles:
             for j in range(5):
                 (project_dir / f"log_{j}.jsonl").touch()
 
-        # Mock the config
+        # Create test config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("data.processors.config", test_config)
 
         # Measure time to find files
         import time
 
         start_time = time.time()
-        files = get_jsonl_files()
+        files = get_jsonl_files(test_config)
         elapsed = time.time() - start_time
 
         # Should find all 50 files quickly
@@ -200,17 +189,15 @@ class TestGetJsonlFiles:
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
         test_config.jsonl_pattern = pattern
-        monkeypatch.setattr("data.processors.config", test_config)
-
-        # Get files
-        files = get_jsonl_files()
+        # Get files using dependency injection
+        files = get_jsonl_files(test_config)
 
         # Check expected count
         assert len(files) == expected_count, (
             f"Pattern '{pattern}' expected {expected_count} files but found {len(files)}"
         )
 
-    def test_single_file_in_deep_nested_directory(self, tmp_path, monkeypatch):
+    def test_single_file_in_deep_nested_directory(self, tmp_path):
         """Test finding a single file in very deep directory structure (boundary case)"""
         projects_dir = tmp_path / ".claude" / "projects"
 
@@ -223,17 +210,16 @@ class TestGetJsonlFiles:
         jsonl_file = deep_path / "deep.jsonl"
         jsonl_file.touch()
 
-        # Mock the config
+        # Create test config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("data.processors.config", test_config)
 
         # Should still find the file
-        files = get_jsonl_files()
+        files = get_jsonl_files(test_config)
         assert len(files) == 1, f"Expected to find 1 file in deep directory but found {len(files)}"
         assert files[0].endswith("deep.jsonl"), "Should find the deeply nested file"
 
-    def test_files_with_special_characters_in_names(self, tmp_path, monkeypatch):
+    def test_files_with_special_characters_in_names(self, tmp_path):
         """Test handling files with special characters (boundary case)"""
         projects_dir = tmp_path / ".claude" / "projects" / "test"
         projects_dir.mkdir(parents=True)
@@ -250,18 +236,17 @@ class TestGetJsonlFiles:
         for name in special_names:
             (projects_dir / name).touch()
 
-        # Mock the config
+        # Create test config
         test_config = AppConfig()
         test_config.claude_projects_path = tmp_path / ".claude" / "projects"
-        monkeypatch.setattr("data.processors.config", test_config)
 
         # Should find all files
-        files = get_jsonl_files()
+        files = get_jsonl_files(test_config)
         assert len(files) == len(special_names), (
             f"Expected {len(special_names)} files with special characters but found {len(files)}"
         )
 
-    def test_maximum_files_performance_boundary(self, tmp_path, monkeypatch):
+    def test_maximum_files_performance_boundary(self, tmp_path):
         """Test performance with maximum reasonable number of files (1000)"""
         projects_dir = tmp_path / ".claude" / "projects"
 
@@ -272,16 +257,15 @@ class TestGetJsonlFiles:
             for j in range(10):
                 (project_dir / f"log_{j:02d}.jsonl").touch()
 
-        # Mock the config
+        # Create test config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("data.processors.config", test_config)
 
         # Measure time
         import time
 
         start_time = time.time()
-        files = get_jsonl_files()
+        files = get_jsonl_files(test_config)
         elapsed = time.time() - start_time
 
         assert len(files) == 1000, f"Expected 1000 files but found {len(files)}"
