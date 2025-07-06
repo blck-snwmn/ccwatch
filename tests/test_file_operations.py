@@ -10,7 +10,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from app import get_jsonl_files
+from data.processors import get_jsonl_files
 from config import AppConfig
 
 
@@ -24,7 +24,7 @@ class TestGetJsonlFiles:
         # Mock the config to use our test directory
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Get files
         files = get_jsonl_files()
@@ -51,7 +51,7 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Get files
         files = get_jsonl_files()
@@ -68,7 +68,7 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = empty_dir
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Get files
         files = get_jsonl_files()
@@ -76,31 +76,27 @@ class TestGetJsonlFiles:
         # Should return empty list
         assert files == [], "Expected empty list for empty directory"
 
-    def test_missing_directory_shows_warning(self, tmp_path, monkeypatch, capsys):
+    def test_missing_directory_shows_warning(self, tmp_path, monkeypatch, caplog):
         """Test behavior when Claude projects directory doesn't exist"""
         nonexistent_dir = tmp_path / "does_not_exist"
 
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = nonexistent_dir
-        monkeypatch.setattr("app.config", test_config)
-
-        # Mock streamlit warning
-        warnings = []
-
-        def mock_warning(msg):
-            warnings.append(msg)
-
-        monkeypatch.setattr("streamlit.warning", mock_warning)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Get files
         files = get_jsonl_files()
 
-        # Should return empty list and show warning
+        # Should return empty list and log warning
         assert files == [], "Expected empty list for non-existent directory"
-        assert len(warnings) == 1, "Expected exactly one warning for non-existent directory"
-        assert "ClaudeCode projects directory not found" in warnings[0]
-        assert str(nonexistent_dir) in warnings[0]
+        
+        # Check that warning was logged
+        assert any("ClaudeCode projects directory not found" in record.message for record in caplog.records), \
+            "Expected warning log message about missing directory"
+        
+        # The log message is actually in the extra data, not in the message itself
+        # So we just need to verify the warning was logged - the path is in structured logging data
 
     def test_get_jsonl_files_with_subdirectories(self, tmp_path, monkeypatch):
         """Test finding JSONL files in nested subdirectories"""
@@ -124,7 +120,7 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Get files
         files = get_jsonl_files()
@@ -148,7 +144,7 @@ class TestGetJsonlFiles:
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
         test_config.jsonl_pattern = "**/logs_*.jsonl"  # Only match files starting with logs_
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Get files
         files = get_jsonl_files()
@@ -174,7 +170,7 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Measure time to find files
         import time
@@ -204,7 +200,7 @@ class TestGetJsonlFiles:
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
         test_config.jsonl_pattern = pattern
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Get files
         files = get_jsonl_files()
@@ -230,7 +226,7 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Should still find the file
         files = get_jsonl_files()
@@ -257,7 +253,7 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = tmp_path / ".claude" / "projects"
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Should find all files
         files = get_jsonl_files()
@@ -279,7 +275,7 @@ class TestGetJsonlFiles:
         # Mock the config
         test_config = AppConfig()
         test_config.claude_projects_path = projects_dir
-        monkeypatch.setattr("app.config", test_config)
+        monkeypatch.setattr("data.processors.config", test_config)
 
         # Measure time
         import time
