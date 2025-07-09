@@ -189,7 +189,7 @@ class TestAggregateCostByTime:
 
     def test_aggregate_time_daily(self):
         """Test daily aggregation"""
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
         df = pd.DataFrame(
             {
                 "timestamp": [
